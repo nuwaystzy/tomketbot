@@ -37,28 +37,56 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
   if (!message) return;
 
   const channelUsername = message.chat.username?.toLowerCase();
-  if (!channelUsername) return; // Only process public channels with usernames or adapt for private if ID based
-
-  if (TELEGRAM_SOURCE_CHANNELS.length > 0 && !TELEGRAM_SOURCE_CHANNELS.includes(channelUsername)) {
-    return; // Not a whitelisted channel
+  const chatId = message.chat.id;
+  
+  // Only process if it's from a whitelisted channel OR if it's sent directly to the bot in DM by an admin
+  const isDM = message.chat.type === 'private';
+  
+  if (!isDM) {
+    if (!channelUsername && !TELEGRAM_SOURCE_CHANNELS.includes(chatId.toString())) {
+      return; // Not whitelisted private channel
+    }
+    
+    if (channelUsername && TELEGRAM_SOURCE_CHANNELS.length > 0 && !TELEGRAM_SOURCE_CHANNELS.includes(channelUsername)) {
+      return; // Not a whitelisted public channel
+    }
+  } else {
+    // If it's a DM, ensure it's from an admin
+    const { isAdmin } = require('./telegram');
+    if (!isAdmin(message.from?.id || 0)) return;
   }
 
   const text = message.text || message.caption || '';
   if (!text) return;
 
   const messageId = message.message_id;
-  const sourceLink = `https://t.me/${channelUsername}/${messageId}`;
+  const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `Direct Message`;
   const telegramPostDate = new Date(message.date * 1000).toISOString();
 
   // 1. Rule-based prefilter
   if (!isPotentiallyActionable(text)) {
-    // We can just drop it to save db space/api, or log it if needed
+    // Save as skipped
+    await supabaseAdmin.from('parsed_items').insert({
+      source_channel: channelUsername || chatId.toString(),
+      message_id: messageId,
+      source_link: sourceLink,
+      original_text: text,
+      category: 'SKIP',
+      project_name: 'Prefiltered',
+      title_for_list: 'Prefiltered',
+      summary: 'Dropped by prefilter (no links/keywords)',
+      action: 'None',
+      confidence: 0,
+      status: 'skipped',
+      reason: 'Prefilter: Not actionable',
+      telegram_post_date: telegramPostDate
+    });
     return;
   }
 
   // 2. Call Gemini
   const promptInput = `
-Source Channel: @${channelUsername}
+Source Channel: ${channelUsername ? '@' + channelUsername : chatId}
 Message ID: ${messageId}
 Source Link: ${sourceLink}
 Message Text:
@@ -72,7 +100,7 @@ ${text}
   if (error || !data || !data.items || data.items.length === 0) {
     // Fallback: save as pending review
     itemsToSave.push({
-      source_channel: channelUsername,
+      source_channel: channelUsername || chatId.toString(),
       message_id: messageId,
       source_link: sourceLink,
       original_text: text,
@@ -94,14 +122,9 @@ ${text}
     data.items.forEach(item => {
       // Skip logic from AI
       if (!item.is_valid || item.category === 'SKIP') {
-         // We might not save SKIPs to keep db clean, but user requested recap to filter SKIP out, meaning they might be saved.
-         // Let's only save valid or pending ones to save DB size, unless we want to track everything.
-         // Actually, let's just drop SKIPs to save space, but if requested, save as 'skipped'.
-         // The prompt says: "Bot harus mengabaikan pesan yang bukan new project/campaign."
-         // Let's drop SKIP entirely unless the category is PENDING_REVIEW.
          if (item.category === 'PENDING_REVIEW') {
              itemsToSave.push({
-                source_channel: channelUsername,
+                source_channel: channelUsername || chatId.toString(),
                 message_id: messageId,
                 source_link: sourceLink,
                 original_text: text,
@@ -119,12 +142,33 @@ ${text}
                 raw_update: update,
                 telegram_post_date: telegramPostDate
              });
+         } else {
+             // Save AI skips so admin can see them in /status -> Skipped
+             itemsToSave.push({
+                source_channel: channelUsername || chatId.toString(),
+                message_id: messageId,
+                source_link: sourceLink,
+                original_text: text,
+                category: item.category || 'SKIP',
+                project_name: item.project_name || 'Unknown',
+                title_for_list: item.title_for_list || 'Unknown',
+                summary: item.summary,
+                action: item.action,
+                confidence: item.confidence,
+                status: 'skipped',
+                reason: item.reason || 'AI classified as SKIP',
+                raw_ai_response: rawResponse,
+                ai_model: model,
+                ai_error: null,
+                raw_update: update,
+                telegram_post_date: telegramPostDate
+             });
          }
          return;
       }
 
       itemsToSave.push({
-        source_channel: channelUsername,
+        source_channel: channelUsername || chatId.toString(),
         message_id: messageId,
         source_link: sourceLink,
         original_text: text,
@@ -134,7 +178,7 @@ ${text}
         summary: item.summary,
         action: item.action,
         confidence: item.confidence,
-        status: 'pending', // all valid items go to pending for admin review
+        status: 'pending', 
         reason: item.reason,
         raw_ai_response: rawResponse,
         ai_model: model,
