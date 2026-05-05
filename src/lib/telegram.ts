@@ -39,6 +39,15 @@ export const sendMessage = async (chatId: string | number, text: string, options
   }
 };
 
+export const broadcastToAdmins = async (text: string) => {
+  const admins = getAdminIds();
+  for (const adminId of admins) {
+    if (adminId) {
+      await sendMessage(adminId, text);
+    }
+  }
+};
+
 export const answerCallbackQuery = async (callbackQueryId: string, text?: string) => {
   try {
     await fetch(`${TELEGRAM_API_URL}/answerCallbackQuery`, {
