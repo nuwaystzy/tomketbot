@@ -63,17 +63,9 @@ export async function POST(req: NextRequest) {
             const text = prev.original_text || '';
             const textUpper = text.toUpperCase();
 
-            // 1. Smart Name Extraction (if missing)
-            if (prev.project_name?.includes('Perlu Review')) {
-              const words = text.split(/\s+/).filter((w: string) => !['LINK:', 'HTTPS://', 'JOIN', 'NEW', 'AIRDROP', 'CHECK'].includes(w.toUpperCase()));
-              const extractedName = words.slice(0, 3).join(' ').replace(/[^a-zA-Z0-9\s]/g, '').trim();
-              updates.project_name = extractedName || 'Project';
-              updates.title_for_list = extractedName || 'Project';
-            }
-
-            // 2. Smart Category Detection (Hierarchy)
+            // ONLY auto-fix category if it's still stuck in PENDING_REVIEW
             if (prev.category === 'PENDING_REVIEW' || !prev.category) {
-              const projName = updates.project_name || prev.project_name;
+              const projName = prev.project_name || '';
               
               if (textUpper.includes('WAITLIST') || textUpper.includes('WL ') || textUpper.includes('EARLY')) {
                 updates.category = 'WL_EARLY_ACCESS';
@@ -86,7 +78,7 @@ export async function POST(req: NextRequest) {
               } else if (textUpper.includes('MAINNET')) {
                 updates.category = 'MAINNET';
               } else {
-                // If no specific keyword, check DB history
+                // Check history for automatic UPDATE category
                 const { data: existing } = await supabaseAdmin
                   .from('parsed_items')
                   .select('id')
