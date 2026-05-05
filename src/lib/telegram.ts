@@ -162,11 +162,12 @@ export const sendPhoto = async (chatId: string | number, photoUrl: string, capti
 export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
   if (imageUrl) {
     // Telegram's 1024 limit is for visible text (after parsing entities/tags).
-    const visibleText = text.replace(/<[^>]*>/g, '');
+    // We strip tags and common HTML entities to get an accurate count.
+    const visibleText = text.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ');
     
     if (visibleText.length > 1024) {
-      // Use hidden link trick to get image + long text in one message
-      // &#8205; is a zero-width joiner
+      // If it's truly over 1024 visible chars, we MUST use sendMessage with hidden link.
+      // We use a zero-width joiner &#8205; to hide the image link.
       const unifiedText = `<a href="${imageUrl}">&#8205;</a>${text}`;
       return await sendMessage(chatId, unifiedText, { 
         ...options, 
@@ -178,6 +179,7 @@ export const sendRecap = async (chatId: string | number, text: string, imageUrl?
         }
       });
     } else {
+      // If it fits, send as a photo with caption (user's preferred style).
       return await sendPhoto(chatId, imageUrl, text, options);
     }
   } else {

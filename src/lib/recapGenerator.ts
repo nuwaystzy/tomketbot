@@ -68,9 +68,9 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
 
   for (const catKey of CATEGORY_KEYS) {
     if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
-      recapText += `▫️ ${getCategoryLabel(catKey)}\n`;
+      recapText += `<b>${getCategoryLabel(catKey)}</b>\n`;
       groupedItems[catKey].forEach(item => {
-        recapText += `➖ <a href="${item.source_link}">${item.title_for_list}</a>\n`;
+        recapText += `• <a href="${item.source_link}">${item.title_for_list}</a>\n`;
       });
       recapText += '\n';
     }
