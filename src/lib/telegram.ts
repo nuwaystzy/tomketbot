@@ -104,6 +104,26 @@ export const answerCallbackQuery = async (callbackQueryId: string, text?: string
   }
 };
 
+export const sendPhoto = async (chatId: string | number, photoUrl: string, caption?: string, options: any = {}) => {
+  try {
+    const response = await fetch(`${TELEGRAM_API_URL}/sendPhoto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: photoUrl,
+        caption: caption,
+        parse_mode: 'HTML',
+        ...options,
+      }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error sending photo:', error);
+    return null;
+  }
+};
+
 export const editMessageText = async (chatId: string | number, messageId: number, text: string, options: any = {}) => {
   try {
     await fetch(`${TELEGRAM_API_URL}/editMessageText`, {
@@ -205,8 +225,21 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
 
 export const sendAdminRecapDraft = async (text: string) => {
   const admins = getAdminIds();
-  await Promise.all(admins.map(adminId => {
-    if (adminId) return sendMessage(adminId, text);
-    return Promise.resolve();
+  const imageUrl = process.env.RECAP_IMAGE_URL;
+
+  await Promise.all(admins.map(async (adminId) => {
+    if (!adminId) return;
+
+    if (imageUrl) {
+      // If text is too long for caption (1024 limit), send photo then text separately
+      if (text.length > 1000) {
+        await sendPhoto(adminId, imageUrl);
+        await sendMessage(adminId, text);
+      } else {
+        await sendPhoto(adminId, imageUrl, text);
+      }
+    } else {
+      await sendMessage(adminId, text);
+    }
   }));
 };
