@@ -107,7 +107,19 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       `<b>All Time:</b>\n` +
       `- Total Pending: ${items.filter(i => i.status === 'pending').length}\n`;
       
-      await sendMessage(chatId, msg);
+      const inlineKeyboard = {
+        inline_keyboard: [
+          [
+            { text: '👁️ Pending (Today)', callback_data: `view_status_pending` },
+            { text: '👁️ Approved (Today)', callback_data: `view_status_approved` }
+          ],
+          [
+            { text: '👁️ Skipped (Today)', callback_data: `view_status_skipped` }
+          ]
+        ]
+      };
+      
+      await sendMessage(chatId, msg, { reply_markup: inlineKeyboard });
     }
     else if (command === '/import') {
       const lines = text.split('\n').slice(1).map(l => l.trim()).filter(l => l.length > 0);

@@ -105,6 +105,22 @@ export async function POST(req: NextRequest) {
           await answerCallbackQuery(callbackQueryId, `Cancelled`);
           await showNextReviewItem(chatId, messageId);
         }
+        else if (data.startsWith('view_status_')) {
+          const status = data.replace('view_status_', '');
+          await answerCallbackQuery(callbackQueryId);
+          const today = new Date().toISOString().split('T')[0];
+          const { data: items } = await supabaseAdmin.from('parsed_items').select('*').eq('status', status).eq('date_found', today);
+          
+          if (!items || items.length === 0) {
+             await sendMessage(chatId, `No ${status} items found today.`);
+          } else {
+             let msg = `📋 <b>Today's ${status.toUpperCase()} Items:</b>\n\n`;
+             items.forEach(item => {
+                msg += `- [${item.category}] ${item.title_for_list} (ID: ${item.display_id || item.id})\n`;
+             });
+             await sendMessage(chatId, msg);
+          }
+        }
         else if (data.startsWith('gen_recap_')) {
           // gen_recap_2026-05-01_2026-05-05
           const parts = data.split('_');
