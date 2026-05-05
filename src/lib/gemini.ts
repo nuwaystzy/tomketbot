@@ -24,9 +24,9 @@ VALID categories (pick one):
 - RETROACTIVE: retroactive airdrop for past users
 - AIRDROP_CAMPAIGN: new airdrop, farm, or campaign tasks
 - MINING_DEPIN: mining or DePIN project
-- WL_EARLY_ACCESS: whitelist or early access registration
-- CLAIM_CHECK_ELIGIBLE: users need to check eligibility or claim tokens
-- UPDATE: project update with important info (allocation results, snapshot, launch)
+- WL_EARLY_ACCESS: Waitlists, registration for early access, allowlists.
+- CLAIM_CHECK_ELIGIBLE: Allocation checkers, claim portals, snapshot results.
+- UPDATE: Ongoing task updates, new missions for existing projects, migrations.
 - PENDING_REVIEW: uncertain, needs human review
 - SKIP: not relevant (meme, general chat, price talk, no action needed)
 
