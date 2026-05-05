@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateRecapDraft } from '@/lib/recapGenerator';
-import { sendMessage, sendPhoto } from '@/lib/telegram';
+import { sendMessage, sendPhoto, sendAdminRecapDraft } from '@/lib/telegram';
 
 export async function GET(req: NextRequest) {
   // Security check
@@ -37,6 +37,9 @@ export async function GET(req: NextRequest) {
     } else {
       await sendMessage(channelId, recapText);
     }
+
+    // NEW: Send reminder copy to admins
+    await sendAdminRecapDraft(`🔔 <b>REMINDER REKAP HARIAN</b>\n\n${recapText}`);
 
     return NextResponse.json({ ok: true, sent_to: channelId });
   } catch (error: any) {
