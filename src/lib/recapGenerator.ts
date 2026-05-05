@@ -64,9 +64,9 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
   }
 
   // Add footer
-  recapText += `♻️ PREVIOUS LIST (link)\n`;
-  recapText += `💭 DISCUSSION GRUB (https://t.me/+n2dN5qK7RqlhYzk1)\n`;
-  recapText += `🐦 TWITTER (https://x.com/TomketLovers)\n`;
+  recapText += `♻️ <a href="https://t.me/tomketairdrop">PREVIOUS LIST</a>\n`;
+  recapText += `💭 <a href="https://t.me/+n2dN5qK7RqlhYzk1">DISCUSSION GRUB</a>\n`;
+  recapText += `🐦 <a href="https://x.com/TomketLovers">TWITTER</a>\n`;
 
   return recapText;
 };
