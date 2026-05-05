@@ -72,7 +72,7 @@ export const sendMessage = async (chatId: string | number, text: string, options
         chat_id: chatId,
         text,
         parse_mode: 'HTML',
-        disable_web_page_preview: true,
+        disable_web_page_preview: options.link_preview_options ? undefined : (options.disable_web_page_preview ?? true),
         ...options,
       }),
     });
@@ -155,6 +155,36 @@ export const sendPhoto = async (chatId: string | number, photoUrl: string, capti
   }
 };
 
+/**
+ * Unified helper to send a recap (image + text) as a single message.
+ * If text is > 1024 chars, it uses a hidden link in sendMessage to keep it as one message.
+ */
+export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
+  if (imageUrl) {
+    // Telegram's 1024 limit is for visible text (after parsing entities/tags).
+    const visibleText = text.replace(/<[^>]*>/g, '');
+    
+    if (visibleText.length > 1024) {
+      // Use hidden link trick to get image + long text in one message
+      // &#8205; is a zero-width joiner
+      const unifiedText = `<a href="${imageUrl}">&#8205;</a>${text}`;
+      return await sendMessage(chatId, unifiedText, { 
+        ...options, 
+        link_preview_options: {
+          is_disabled: false,
+          url: imageUrl,
+          show_above_text: true,
+          prefer_large_media: true
+        }
+      });
+    } else {
+      return await sendPhoto(chatId, imageUrl, text, options);
+    }
+  } else {
+    return await sendMessage(chatId, text, options);
+  }
+};
+
 export const getCategoryKeyboard = (itemId: string | number) => {
   const { CATEGORY_KEYS, getCategoryLabel } = require('./categories');
   const keyboard = [];
@@ -232,16 +262,6 @@ export const sendAdminRecapDraft = async (text: string) => {
 
   await Promise.all(admins.map(async (adminId) => {
     if (!adminId) return;
-
-    if (imageUrl) {
-      if (text.length > 1000) {
-        await sendPhoto(adminId, imageUrl);
-        await sendMessage(adminId, text, { reply_markup: kb });
-      } else {
-        await sendPhoto(adminId, imageUrl, text, { reply_markup: kb });
-      }
-    } else {
-      await sendMessage(adminId, text, { reply_markup: kb });
-    }
+    await sendRecap(adminId, text, imageUrl, { reply_markup: kb });
   }));
 };

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateRecapDraft } from '@/lib/recapGenerator';
-import { sendMessage, sendPhoto, sendAdminRecapDraft } from '@/lib/telegram';
+import { sendRecap, sendAdminRecapDraft } from '@/lib/telegram';
 
 export async function GET(req: NextRequest) {
   // Security check
@@ -27,16 +27,7 @@ export async function GET(req: NextRequest) {
       throw new Error('TELEGRAM_RECAP_CHANNEL_ID is not configured');
     }
 
-    if (imageUrl) {
-      if (recapText.length > 1000) {
-        await sendPhoto(channelId, imageUrl);
-        await sendMessage(channelId, recapText);
-      } else {
-        await sendPhoto(channelId, imageUrl, recapText);
-      }
-    } else {
-      await sendMessage(channelId, recapText);
-    }
+    await sendRecap(channelId, recapText, imageUrl);
 
     // NEW: Send reminder copy to admins
     await sendAdminRecapDraft(`🔔 <b>REMINDER REKAP HARIAN</b>\n\n${recapText}`);

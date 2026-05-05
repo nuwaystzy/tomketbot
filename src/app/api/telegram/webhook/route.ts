@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseTelegramPost } from '@/lib/filterParser';
 import { handleAdminCommand, logAction, showNextReviewItem } from '@/lib/adminCommands';
-import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft, sendPhoto } from '@/lib/telegram';
+import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft, sendPhoto, sendRecap } from '@/lib/telegram';
 import { generateRecapDraft } from '@/lib/recapGenerator';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
@@ -187,16 +187,7 @@ export async function POST(req: NextRequest) {
             return;
           }
 
-          if (imageUrl) {
-            if (text.length > 1000) {
-              await sendPhoto(channelId, imageUrl);
-              await sendMessage(channelId, text);
-            } else {
-              await sendPhoto(channelId, imageUrl, text);
-            }
-          } else {
-            await sendMessage(channelId, text);
-          }
+          await sendRecap(channelId, text, imageUrl);
           await sendMessage(chatId, '✅ <b>Berhasil!</b> Rekap sudah dikirim ke channel.');
         }
         else if (data.startsWith('gen_recap_')) {

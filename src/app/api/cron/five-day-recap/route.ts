@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateRecapDraft } from '@/lib/recapGenerator';
-import { sendMessage, sendPhoto, sendAdminRecapDraft } from '@/lib/telegram';
+import { sendRecap, sendAdminRecapDraft } from '@/lib/telegram';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -33,16 +33,7 @@ export async function GET(req: NextRequest) {
     // Change title to reflect it's a 5-day / weekly recap
     const finalRecap = recapText.replace('📢 LIST AIRDROP', '🏛️ WEEKLY LIST AIRDROP');
 
-    if (imageUrl) {
-      if (finalRecap.length > 1000) {
-        await sendPhoto(channelId, imageUrl);
-        await sendMessage(channelId, finalRecap);
-      } else {
-        await sendPhoto(channelId, imageUrl, finalRecap);
-      }
-    } else {
-      await sendMessage(channelId, finalRecap);
-    }
+    await sendRecap(channelId, finalRecap, imageUrl);
 
     // NEW: Send reminder copy to admins
     await sendAdminRecapDraft(`🏛️ <b>REMINDER REKAP 5-HARIAN</b>\n\n${finalRecap}`);
