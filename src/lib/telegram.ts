@@ -28,11 +28,14 @@ export const sendMessage = async (chatId: string | number, text: string, options
     });
     
     if (!response.ok) {
-      console.error('Telegram sendMessage failed:', await response.text());
+      const errorText = await response.text();
+      console.error(`Telegram sendMessage failed for chat ${chatId}:`, errorText);
+      return null;
     }
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error('Error sending telegram message:', error);
+    return null;
   }
 };
 
