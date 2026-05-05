@@ -61,3 +61,25 @@ CREATE TABLE IF NOT EXISTS recap_batch_items (
 CREATE INDEX IF NOT EXISTS idx_parsed_items_status ON parsed_items(status);
 CREATE INDEX IF NOT EXISTS idx_parsed_items_date_found ON parsed_items(date_found);
 CREATE INDEX IF NOT EXISTS idx_parsed_items_telegram_post_date ON parsed_items(telegram_post_date);
+
+-- UX Enhancements Schema Updates
+ALTER TABLE parsed_items ADD COLUMN IF NOT EXISTS display_id BIGSERIAL UNIQUE;
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  admin_id bigint PRIMARY KEY,
+  flow text,
+  step text,
+  payload jsonb,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS action_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id bigint,
+  action_type text,
+  target_item_id uuid REFERENCES parsed_items(id) ON DELETE CASCADE,
+  previous_state jsonb,
+  new_state jsonb,
+  created_at timestamptz DEFAULT now()
+);

@@ -77,35 +77,77 @@ export const editMessageText = async (chatId: string | number, messageId: number
   }
 };
 
-export const sendAdminItemPreview = async (item: DatabaseParsedItem) => {
+const getConfidenceLabel = (conf: number | null): string => {
+  if (conf === null) return 'Unknown';
+  if (conf >= 0.85) return '🟢 High';
+  if (conf >= 0.60) return '🟡 Medium';
+  return '🔴 Low';
+};
+
+export const getCategoryKeyboard = (itemId: string | number) => {
+  const { CATEGORY_KEYS, getCategoryLabel } = require('./categories');
+  const keyboard = [];
+  let row = [];
+  for (let i = 0; i < CATEGORY_KEYS.length; i++) {
+    row.push({ text: getCategoryLabel(CATEGORY_KEYS[i]), callback_data: `move_to_${CATEGORY_KEYS[i]}_${itemId}` });
+    if (row.length === 2 || i === CATEGORY_KEYS.length - 1) {
+      keyboard.push(row);
+      row = [];
+    }
+  }
+  keyboard.push([{ text: '🔙 Cancel Move', callback_data: `cancel_move_${itemId}` }]);
+  return { inline_keyboard: keyboard };
+};
+
+export const sendAdminItemPreview = async (item: DatabaseParsedItem, targetChatId?: number, editMessageId?: number) => {
+  const confPercent = item.confidence ? Math.round(item.confidence * 100) : 0;
+  const confLabel = getConfidenceLabel(item.confidence);
+  
   const text = `
-<b>${item.status === 'pending' ? '⚠️ Pending Review' : '✅ New Item Detected'}</b>
+<b>${item.status === 'pending' ? '⚠️ Pending Review' : '✅ Approved Item'}</b>
 
 <b>Category:</b> ${item.category}
 <b>Project:</b> ${item.title_for_list}
 <b>Source:</b> ${item.source_link}
-<b>Confidence:</b> ${item.confidence ? Math.round(item.confidence * 100) : 0}%
-<b>Reason:</b> ${item.reason}
+<b>Confidence:</b> ${confPercent}% (${confLabel})
+<b>Reason:</b> ${item.reason || 'N/A'}
 
-<b>Summary:</b> ${item.summary}
-<b>Action:</b> ${item.action}
+<b>Summary:</b> ${item.summary || 'N/A'}
+<b>Action:</b> ${item.action || 'N/A'}
 
-<i>ID: ${item.id}</i>
+<i>ID: ${item.display_id || item.id}</i>
 `;
 
-  const inlineKeyboard = {
-    inline_keyboard: [
-      [
-        { text: '✅ Approve', callback_data: `approve_${item.id}` },
-        { text: '❌ Skip', callback_data: `skip_${item.id}` },
+  let inlineKeyboard: any = { inline_keyboard: [] };
+  
+  if (item.status === 'pending') {
+    inlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: '✅ Approve & Next', callback_data: `app_next_${item.id}` },
+          { text: '❌ Skip & Next', callback_data: `skip_next_${item.id}` },
+        ],
+        [
+          { text: '🔁 Move', callback_data: `move_cat_${item.id}` },
+          { text: '✏️ Edit', callback_data: `edit_name_${item.id}` },
+        ]
       ],
-    ],
-  };
+    };
+  }
 
-  const admins = getAdminIds();
-  for (const adminId of admins) {
-    if (adminId) {
-      await sendMessage(adminId, text, { reply_markup: inlineKeyboard });
+  if (targetChatId) {
+    if (editMessageId) {
+      return await editMessageText(targetChatId, editMessageId, text, { reply_markup: inlineKeyboard });
+    } else {
+      return await sendMessage(targetChatId, text, { reply_markup: inlineKeyboard });
+    }
+  } else {
+    // Broadcast
+    const admins = getAdminIds();
+    for (const adminId of admins) {
+      if (adminId) {
+        await sendMessage(adminId, text, { reply_markup: inlineKeyboard });
+      }
     }
   }
 };

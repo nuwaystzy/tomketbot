@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseTelegramPost } from '@/lib/filterParser';
-import { handleAdminCommand } from '@/lib/adminCommands';
-import { answerCallbackQuery, isAdmin } from '@/lib/telegram';
+import { handleAdminCommand, logAction, showNextReviewItem } from '@/lib/adminCommands';
+import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft } from '@/lib/telegram';
+import { generateRecapDraft } from '@/lib/recapGenerator';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
 export async function POST(req: NextRequest) {
-  // Validate Webhook Secret if set
   if (WEBHOOK_SECRET) {
     const secret = req.headers.get('x-telegram-bot-api-secret-token');
     if (secret !== WEBHOOK_SECRET) {
@@ -24,14 +24,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // 2. Handle Admin DM Commands
+    // 2. Handle Admin DM Commands & Session Text
     if (update.message && update.message.text) {
       const chatId = update.message.chat.id;
       const userId = update.message.from?.id;
       
-      // Multi-admin support
       if (userId && isAdmin(userId)) {
-        await handleAdminCommand(chatId, update.message.text);
+        await handleAdminCommand(chatId, userId, update.message.text);
       }
       return NextResponse.json({ ok: true });
     }
@@ -42,16 +41,78 @@ export async function POST(req: NextRequest) {
       const callbackQueryId = callbackQuery.id;
       const data = callbackQuery.data;
       const userId = callbackQuery.from?.id;
+      const chatId = callbackQuery.message?.chat.id;
+      const messageId = callbackQuery.message?.message_id;
 
-      if (userId && isAdmin(userId) && data) {
-        if (data.startsWith('approve_')) {
-          const itemId = data.replace('approve_', '');
+      if (userId && isAdmin(userId) && data && chatId && messageId) {
+        
+        const getPrevState = async (id: string) => {
+           const { data } = await supabaseAdmin.from('parsed_items').select('*').eq('id', id).single();
+           return data;
+        };
+
+        if (data.startsWith('app_next_')) {
+          const itemId = data.replace('app_next_', '');
+          const prev = await getPrevState(itemId);
+          await logAction(userId, 'approve', itemId, { status: 'pending' }, { status: 'approved' });
           await supabaseAdmin.from('parsed_items').update({ status: 'approved' }).eq('id', itemId);
           await answerCallbackQuery(callbackQueryId, '✅ Approved');
-        } else if (data.startsWith('skip_')) {
-          const itemId = data.replace('skip_', '');
+          await showNextReviewItem(chatId, messageId);
+        } 
+        else if (data.startsWith('skip_next_')) {
+          const itemId = data.replace('skip_next_', '');
+          const prev = await getPrevState(itemId);
+          await logAction(userId, 'skip', itemId, { status: 'pending' }, { status: 'skipped' });
           await supabaseAdmin.from('parsed_items').update({ status: 'skipped' }).eq('id', itemId);
           await answerCallbackQuery(callbackQueryId, '❌ Skipped');
+          await showNextReviewItem(chatId, messageId);
+        }
+        else if (data.startsWith('move_cat_')) {
+          const itemId = data.replace('move_cat_', '');
+          const { editMessageText } = require('@/lib/telegram');
+          await editMessageText(chatId, messageId, `Select new category:`, getCategoryKeyboard(itemId));
+          await answerCallbackQuery(callbackQueryId);
+        }
+        else if (data.startsWith('edit_name_')) {
+          const itemId = data.replace('edit_name_', '');
+          await supabaseAdmin.from('admin_sessions').upsert({
+             admin_id: userId, flow: 'edit', step: 'name', payload: { item_id: itemId, message_id: messageId, return_to_review: true }
+          });
+          await sendMessage(chatId, `Please type the new project name for this item:`);
+          await answerCallbackQuery(callbackQueryId);
+        }
+        else if (data.startsWith('move_to_')) {
+          const parts = data.split('_');
+          const itemId = parts.pop()!;
+          const cat = parts.slice(2).join('_');
+          
+          if (itemId === 'wizard') {
+             await supabaseAdmin.from('admin_sessions').update({ step: 'name', payload: { category: cat } }).eq('admin_id', userId);
+             const { editMessageText } = require('@/lib/telegram');
+             await editMessageText(chatId, messageId, `Category selected: <b>${cat}</b>\n\nPlease type the Project Name:`, { parse_mode: 'HTML' });
+             await answerCallbackQuery(callbackQueryId);
+          } else {
+            const prev = await getPrevState(itemId);
+            if (prev) {
+               await logAction(userId, 'move_cat', itemId, { category: prev.category }, { category: cat });
+               await supabaseAdmin.from('parsed_items').update({ category: cat }).eq('id', itemId);
+            }
+            await answerCallbackQuery(callbackQueryId, `Moved to ${cat}`);
+            await showNextReviewItem(chatId, messageId);
+          }
+        }
+        else if (data.startsWith('cancel_move_')) {
+          await answerCallbackQuery(callbackQueryId, `Cancelled`);
+          await showNextReviewItem(chatId, messageId);
+        }
+        else if (data.startsWith('gen_recap_')) {
+          // gen_recap_2026-05-01_2026-05-05
+          const parts = data.split('_');
+          const end = parts.pop()!;
+          const start = parts.pop()!;
+          await answerCallbackQuery(callbackQueryId, `Generating Recap...`);
+          const recapDraft = await generateRecapDraft(start, end);
+          await sendAdminRecapDraft(recapDraft);
         }
       } else {
          await answerCallbackQuery(callbackQueryId, 'Unauthorized');

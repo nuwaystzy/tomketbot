@@ -63,6 +63,7 @@ export interface GeminiResponse {
 
 export interface DatabaseParsedItem {
   id?: string;
+  display_id?: string;
   source_channel: string;
   message_id: number;
   source_link: string;
@@ -81,4 +82,20 @@ export interface DatabaseParsedItem {
   raw_update?: any;
   telegram_post_date?: string;
   date_found?: string;
+}
+
+export interface AdminSession {
+  admin_id: number;
+  flow: string;
+  step: string;
+  payload: any;
+}
+
+export interface ActionLog {
+  id?: string;
+  admin_id: number;
+  action_type: string;
+  target_item_id: string;
+  previous_state: any;
+  new_state: any;
 }
