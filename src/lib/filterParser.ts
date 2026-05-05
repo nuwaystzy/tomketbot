@@ -38,28 +38,38 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
 
   const channelUsername = message.chat.username?.toLowerCase();
   const chatId = message.chat.id;
+  const text = message.text || message.caption || '';
+  const messageId = message.message_id;
   
   // Only process if it's from a whitelisted channel OR if it's sent directly to the bot in DM by an admin
   const isDM = message.chat.type === 'private';
   
+  // Temporary Debug Broadcast
+  const { broadcastToAdmins } = require('./telegram');
+  await broadcastToAdmins(`[DEBUG] Received message_id: ${messageId} from channel: ${channelUsername}. isDM: ${isDM}. text length: ${text.length}`);
+
   if (!isDM) {
     if (!channelUsername && !TELEGRAM_SOURCE_CHANNELS.includes(chatId.toString())) {
-      return; // Not whitelisted private channel
+      await broadcastToAdmins(`[DEBUG] Dropped: Not whitelisted private channel. ID: ${chatId}`);
+      return; 
     }
     
     if (channelUsername && TELEGRAM_SOURCE_CHANNELS.length > 0 && !TELEGRAM_SOURCE_CHANNELS.includes(channelUsername)) {
-      return; // Not a whitelisted public channel
+      await broadcastToAdmins(`[DEBUG] Dropped: Not whitelisted public channel. Username: ${channelUsername}`);
+      return; 
     }
   } else {
-    // If it's a DM, ensure it's from an admin
     const { isAdmin } = require('./telegram');
-    if (!isAdmin(message.from?.id || 0)) return;
+    if (!isAdmin(message.from?.id || 0)) {
+      return;
+    }
   }
 
-  const text = message.text || message.caption || '';
-  if (!text) return;
+  if (!text) {
+     await broadcastToAdmins(`[DEBUG] Dropped: No text`);
+     return;
+  }
 
-  const messageId = message.message_id;
   const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `Direct Message`;
   const telegramPostDate = new Date(message.date * 1000).toISOString();
 
