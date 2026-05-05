@@ -224,10 +224,21 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       }
     }
     else if (command === '/settings') {
-      const msg = `⚙️ <b>Settings</b>\n\n` +
-      `- Source Channels: ${process.env.TELEGRAM_SOURCE_CHANNELS}\n` +
-      `- Gemini Model: ${process.env.GEMINI_MODEL}\n` +
-      `- Admin Count: ${(process.env.TELEGRAM_ADMIN_IDS || '').split(',').length}\n`;
+      const { count: totalItems } = await supabaseAdmin
+        .from('parsed_items')
+        .select('*', { count: 'exact', head: true });
+
+      const msg = `⚙️ <b>Pengaturan Bot</b>\n\n` +
+      `<b>Source Channel:</b> ${process.env.TELEGRAM_SOURCE_CHANNELS}\n` +
+      `<b>Model AI:</b> ${process.env.GEMINI_MODEL}\n` +
+      `<b>Jumlah Admin:</b> ${(process.env.TELEGRAM_ADMIN_IDS || '').split(',').length}\n` +
+      `<b>Total Item di DB:</b> ${totalItems || 0}\n\n` +
+      `<b>Kebijakan Retensi Data:</b>\n` +
+      `- Skipped: dihapus setelah <b>7 hari</b>\n` +
+      `- Pending kadaluarsa: dihapus setelah <b>14 hari</b>\n` +
+      `- Approved: disimpan <b>6 bulan</b>\n` +
+      `- Log aksi: dihapus setelah <b>30 hari</b>\n\n` +
+      `<i>Auto-cleanup berjalan setiap hari pukul 08:00 WIB</i>`;
       await sendMessage(chatId, msg);
     }
     else if (command === '/undo') {
