@@ -27,18 +27,31 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
     return `No approved items found between ${startDateStr} and ${endDateStr}.`;
   }
 
-  // Format the dates
-  const startObj = new Date(startDateStr);
-  const endObj = new Date(endDateStr);
+  // Format the dates - use ACTUAL range of items, not parameter
+  const actualDates = items
+    .map(i => i.telegram_post_date?.split('T')[0])
+    .filter(Boolean)
+    .sort() as string[];
   
-  const startDay = startObj.getDate();
-  const endDay = endObj.getDate();
+  const effectiveStart = actualDates[0] || startDateStr;
+  const effectiveEnd = actualDates[actualDates.length - 1] || endDateStr;
+  
+  const startObj = new Date(effectiveStart + 'T00:00:00Z');
+  const endObj = new Date(effectiveEnd + 'T00:00:00Z');
+  
+  const startDay = startObj.getUTCDate();
+  const endDay = endObj.getUTCDate();
   const monthNames = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
-  const month = monthNames[startObj.getMonth()]; // Assuming same month for simplicity as per requirement "1-5 MAY"
+  const month = monthNames[startObj.getUTCMonth()];
+  const endMonth = monthNames[endObj.getUTCMonth()];
 
-  let dateHeader = `${startDay}-${endDay} ${month}`;
-  if (startDay === endDay) {
+  let dateHeader: string;
+  if (effectiveStart === effectiveEnd) {
     dateHeader = `${startDay} ${month}`;
+  } else if (month === endMonth) {
+    dateHeader = `${startDay}-${endDay} ${month}`;
+  } else {
+    dateHeader = `${startDay} ${month} - ${endDay} ${endMonth}`;
   }
 
   let recapText = `📢 LIST AIRDROP ${dateHeader}\n\n`;

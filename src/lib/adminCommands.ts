@@ -59,13 +59,16 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
     else if (command === '/today' || command === '/week') {
       const isWeek = command === '/week';
       
-      let startDateStr;
-      let endDateStr = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      // Use WIB (UTC+7) for date calculation
+      const todayWIB = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const endDateStr = todayWIB.toISOString().split('T')[0];
       
+      let startDateStr: string;
       if (isWeek) {
-        const d = new Date();
-        const day = d.getDay() || 7; 
-        d.setHours(-24 * (day - 1));
+        const d = new Date(todayWIB);
+        const day = d.getUTCDay() || 7; // Mon=1...Sun=7
+        d.setUTCDate(d.getUTCDate() - (day - 1));
         startDateStr = d.toISOString().split('T')[0];
       } else {
         startDateStr = endDateStr;
@@ -75,22 +78,53 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
         .from('parsed_items')
         .select('*')
         .eq('status', 'approved')
-        .gte('telegram_post_date', `${startDateStr}T00:00:00.000Z`);
+        .gte('telegram_post_date', `${startDateStr}T00:00:00.000Z`)
+        .lte('telegram_post_date', `${endDateStr}T23:59:59.999Z`)
+        .order('telegram_post_date', { ascending: true });
         
       if (error) throw error;
       if (!data || data.length === 0) {
-        await sendMessage(chatId, `No approved items found for ${command}.`);
+        await sendMessage(chatId, `Tidak ada item yang disetujui untuk ${command}.`);
         return;
       }
 
-      let msg = `✅ <b>Approved Items (${command}):</b>\n\n`;
-      data.forEach(item => {
-        msg += `- [${item.category}] ${item.title_for_list}\n`;
+      // Group by category for preview
+      const { CATEGORY_KEYS, getCategoryLabel } = require('./categories');
+      const grouped: Record<string, any[]> = {};
+      data.forEach((item: any) => {
+        if (!grouped[item.category]) grouped[item.category] = [];
+        grouped[item.category].push(item);
       });
+
+      let msg = `✅ <b>Item Disetujui (${command}):</b>\n\n`;
+      for (const catKey of CATEGORY_KEYS) {
+        if (grouped[catKey] && grouped[catKey].length > 0) {
+          msg += `<b>${getCategoryLabel(catKey)}</b>\n`;
+          grouped[catKey].forEach((item: any) => {
+            msg += `• ${item.title_for_list}\n`;
+          });
+          msg += '\n';
+        }
+      }
+      // Also show any uncategorized
+      Object.keys(grouped).forEach(cat => {
+        if (!CATEGORY_KEYS.includes(cat) && grouped[cat].length > 0) {
+          msg += `<b>${cat}</b>\n`;
+          grouped[cat].forEach((item: any) => {
+            msg += `• ${item.title_for_list}\n`;
+          });
+          msg += '\n';
+        }
+      });
+
+      // Compute actual date range from items
+      const dates = data.map((i: any) => i.telegram_post_date?.split('T')[0]).filter(Boolean).sort();
+      const actualStart = dates[0] || startDateStr;
+      const actualEnd = dates[dates.length - 1] || endDateStr;
       
       const inlineKeyboard = {
         inline_keyboard: [
-          [{ text: `📝 Generate Final Recap (${command})`, callback_data: `gen_recap_${startDateStr}_${endDateStr}` }]
+          [{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }]
         ]
       };
       
