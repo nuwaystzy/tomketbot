@@ -101,6 +101,13 @@ export async function POST(req: NextRequest) {
             await showNextReviewItem(chatId, messageId);
           }
         }
+        else if (data.startsWith('del_item_')) {
+          const itemId = data.replace('del_item_', '');
+          const { data: item } = await supabaseAdmin.from('parsed_items').select('title_for_list').eq('id', itemId).single();
+          await supabaseAdmin.from('parsed_items').delete().eq('id', itemId);
+          await answerCallbackQuery(callbackQueryId, `🗑️ Dihapus!`);
+          await sendMessage(chatId, `🗑️ <b>${item?.title_for_list || 'Item'}</b> berhasil dihapus dari daftar.`);
+        }
         else if (data.startsWith('cancel_move_')) {
           await answerCallbackQuery(callbackQueryId, `Cancelled`);
           await showNextReviewItem(chatId, messageId);

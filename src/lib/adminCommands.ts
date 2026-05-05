@@ -97,37 +97,42 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       });
 
       let msg = `✅ <b>Item Disetujui (${command}):</b>\n\n`;
-      for (const catKey of CATEGORY_KEYS) {
+      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c))];
+      
+      for (const catKey of allCats) {
         if (grouped[catKey] && grouped[catKey].length > 0) {
-          msg += `<b>${getCategoryLabel(catKey)}</b>\n`;
+          const label = getCategoryLabel ? getCategoryLabel(catKey) : catKey;
+          msg += `<b>${label}</b>\n`;
           grouped[catKey].forEach((item: any) => {
-            msg += `• ${item.title_for_list}\n`;
+            const id = item.display_id || item.id;
+            msg += `• ${item.title_for_list} <i>[ID:${id}]</i>\n`;
           });
           msg += '\n';
         }
       }
-      // Also show any uncategorized
-      Object.keys(grouped).forEach(cat => {
-        if (!CATEGORY_KEYS.includes(cat) && grouped[cat].length > 0) {
-          msg += `<b>${cat}</b>\n`;
-          grouped[cat].forEach((item: any) => {
-            msg += `• ${item.title_for_list}\n`;
-          });
-          msg += '\n';
-        }
-      });
+
+      msg += `<i>Gunakan tombol di bawah untuk edit/hapus item.</i>`;
 
       // Compute actual date range from items
       const dates = data.map((i: any) => i.telegram_post_date?.split('T')[0]).filter(Boolean).sort();
       const actualStart = dates[0] || startDateStr;
       const actualEnd = dates[dates.length - 1] || endDateStr;
       
-      const inlineKeyboard = {
-        inline_keyboard: [
-          [{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }]
-        ]
-      };
+      // Build inline keyboard: per-item Edit + Delete buttons, then Generate Recap
+      const itemButtons: any[][] = [];
+      data.forEach((item: any) => {
+        const id = item.id;
+        const shortName = item.title_for_list.substring(0, 18);
+        itemButtons.push([
+          { text: `✏️ ${shortName}`, callback_data: `edit_name_${id}` },
+          { text: `🗑️ Hapus`, callback_data: `del_item_${id}` }
+        ]);
+      });
+      itemButtons.push([{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }]);
+
+      const inlineKeyboard = { inline_keyboard: itemButtons };
       
+
       await sendMessage(chatId, msg, { reply_markup: inlineKeyboard });
     }
     else if (command === '/status') {
