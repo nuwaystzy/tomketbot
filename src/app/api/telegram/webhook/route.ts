@@ -55,16 +55,41 @@ export async function POST(req: NextRequest) {
 
         if (data.startsWith('app_next_')) {
           const itemId = data.replace('app_next_', '');
-          const prev = await supabaseAdmin.from('parsed_items').select('id, category, project_name, original_text').eq('id', itemId).single();
+          const { data: prev } = await supabaseAdmin.from('parsed_items').select('*').eq('id', itemId).single();
           
           const updates: any = { status: 'approved' };
-          if (prev.data && (prev.data.category === 'PENDING_REVIEW' || !prev.data.category)) {
-            updates.category = 'UPDATE';
-          }
-          if (prev.data && prev.data.project_name?.includes('Perlu Review')) {
-            const firstWord = prev.data.original_text?.trim().split(/\s+/)[0] || 'Project';
-            updates.project_name = firstWord;
-            updates.title_for_list = firstWord;
+          
+          if (prev) {
+            const text = prev.original_text || '';
+            const textUpper = text.toUpperCase();
+
+            // 1. Smart Name Extraction (if missing)
+            if (prev.project_name?.includes('Perlu Review')) {
+              // Extract 2-3 words, avoiding common filler words
+              const words = text.split(/\s+/).filter(w => !['LINK:', 'HTTPS://', 'JOIN', 'NEW', 'AIRDROP'].includes(w.toUpperCase()));
+              const extractedName = words.slice(0, 3).join(' ').replace(/[^a-zA-Z0-9\s]/g, '').trim();
+              updates.project_name = extractedName || 'Project';
+              updates.title_for_list = extractedName || 'Project';
+            }
+
+            // 2. Smart Category Detection (if PENDING_REVIEW)
+            if (prev.category === 'PENDING_REVIEW' || !prev.category) {
+              const projName = updates.project_name || prev.project_name;
+              
+              if (textUpper.includes('WAITLIST') || textUpper.includes('WL ') || textUpper.includes('EARLY')) {
+                updates.category = 'WL_EARLY_ACCESS';
+              } else {
+                // Check if project exists in DB to decide between AIRDROP or UPDATE
+                const { data: existing } = await supabaseAdmin
+                  .from('parsed_items')
+                  .select('id')
+                  .ilike('project_name', projName)
+                  .eq('status', 'approved')
+                  .limit(1);
+                
+                updates.category = (existing && existing.length > 0) ? 'UPDATE' : 'AIRDROP';
+              }
+            }
           }
 
           await logAction(userId, 'approve', itemId, { status: 'pending' }, updates);
