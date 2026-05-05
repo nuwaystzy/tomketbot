@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
 import { GeminiResponse } from '@/types';
 
 const GEMINI_API_KEYS = (process.env.GEMINI_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
@@ -79,32 +78,47 @@ Important:
 
 export const parseWithGemini = async (text: string, attempt = 1): Promise<{ data: GeminiResponse | null, error: string | null, rawResponse: string | null, model: string }> => {
   const apiKey = getNextApiKey();
-  const ai = new GoogleGenAI({ apiKey });
+  const model = GEMINI_MODEL; // e.g., gemini-1.5-pro
 
   try {
-    const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: text,
-        config: {
-            systemInstruction: SYSTEM_PROMPT,
-            responseMimeType: "application/json",
-            temperature: 0.2
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text }]
+        }],
+        systemInstruction: {
+          parts: [{ text: SYSTEM_PROMPT }]
+        },
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.2
         }
+      })
     });
 
-    const rawText = response.text || '';
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(JSON.stringify(errorData));
+    }
+
+    const result = await response.json();
+    const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
     let cleanJson = rawText.trim();
     if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/```json/g, '');
     if (cleanJson.endsWith('```')) cleanJson = cleanJson.replace(/```/g, '');
 
     const parsed = JSON.parse(cleanJson) as GeminiResponse;
-    return { data: parsed, error: null, rawResponse: rawText, model: GEMINI_MODEL };
+    return { data: parsed, error: null, rawResponse: rawText, model };
   } catch (error: any) {
     console.error(`Gemini attempt ${attempt} failed:`, error.message);
     if (attempt < GEMINI_API_KEYS.length) {
-      // Try next key if available
       return parseWithGemini(text, attempt + 1);
     }
-    return { data: null, error: error.message || 'Unknown Gemini error', rawResponse: null, model: GEMINI_MODEL };
+    return { data: null, error: error.message || 'Unknown Gemini error', rawResponse: null, model };
   }
 };
