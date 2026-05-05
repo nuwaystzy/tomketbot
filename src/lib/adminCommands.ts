@@ -180,7 +180,7 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       } else {
         // Guided wizard start
         await supabaseAdmin.from('admin_sessions').upsert({ admin_id: userId, flow: 'add', step: 'category', payload: {} });
-        await sendMessage(chatId, `🧙‍♂️ <b>Add Project Wizard</b>\n\nPlease select a category:`, getCategoryKeyboard('wizard'));
+        await sendMessage(chatId, `🧙‍♂️ <b>Add Project Wizard</b>\n\nPlease select a category:`, { reply_markup: getCategoryKeyboard('wizard') });
       }
     }
     else if (command === '/settings') {
