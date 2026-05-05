@@ -120,8 +120,11 @@ ${text}
     });
   } else {
     data.items.forEach(item => {
+      // Force #update tags to bypass AI skips
+      const isUpdateTag = text.toLowerCase().includes('#update');
+      
       // Skip logic from AI
-      if (!item.is_valid || item.category === 'SKIP') {
+      if (!isUpdateTag && (!item.is_valid || item.category === 'SKIP')) {
          if (item.category === 'PENDING_REVIEW') {
              itemsToSave.push({
                 source_channel: channelUsername || chatId.toString(),
@@ -172,14 +175,14 @@ ${text}
         message_id: messageId,
         source_link: sourceLink,
         original_text: text,
-        category: item.category,
-        project_name: item.project_name,
-        title_for_list: item.title_for_list,
+        category: isUpdateTag && (item.category === 'SKIP' || !item.category) ? 'UPDATE' : item.category,
+        project_name: item.project_name || 'Unknown Update',
+        title_for_list: item.title_for_list || 'Update',
         summary: item.summary,
         action: item.action,
         confidence: item.confidence,
         status: 'pending', 
-        reason: item.reason,
+        reason: isUpdateTag ? 'Forced by #update tag' : item.reason,
         raw_ai_response: rawResponse,
         ai_model: model,
         ai_error: null,
