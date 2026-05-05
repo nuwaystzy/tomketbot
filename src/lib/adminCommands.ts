@@ -118,14 +118,12 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       const actualStart = dates[0] || startDateStr;
       const actualEnd = dates[dates.length - 1] || endDateStr;
       
-      // Build inline keyboard: per-item Edit + Delete buttons, then Generate Recap
+      // Build inline keyboard: per-item Manage button, then Generate Recap
       const itemButtons: any[][] = [];
       data.forEach((item: any) => {
         const id = item.id;
-        const shortName = item.title_for_list.substring(0, 18);
         itemButtons.push([
-          { text: `✏️ ${shortName}`, callback_data: `edit_name_${id}` },
-          { text: `🗑️ Hapus`, callback_data: `del_item_${id}` }
+          { text: `⚙️ Kelola: ${item.title_for_list}`, callback_data: `manage_item_${id}` }
         ]);
       });
       itemButtons.push([{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }]);
@@ -350,7 +348,41 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
         if (session.payload.return_to_review) {
           await showNextReviewItem(chatId, session.payload.message_id);
         }
-      } else {
+      } 
+      else if (session.step === 'date') {
+        const itemId = session.payload.item_id;
+        const dateInput = text.trim();
+        
+        // Basic date parsing helper
+        const parseInputDate = (str: string): Date | null => {
+          const d = new Date(str);
+          if (!isNaN(d.getTime())) return d;
+          // Try "1 May" format
+          const currentYear = new Date().getFullYear();
+          const d2 = new Date(`${str} ${currentYear}`);
+          if (!isNaN(d2.getTime())) return d2;
+          return null;
+        };
+
+        const newDate = parseInputDate(dateInput);
+        if (!newDate) {
+          await sendMessage(chatId, `❌ Format tanggal tidak dikenali. Coba: <code>1 May</code> atau <code>2026-05-01</code>`, { parse_mode: 'HTML' });
+          return;
+        }
+
+        const { data: item } = await supabaseAdmin.from('parsed_items').select('*').eq('id', itemId).single();
+        if (item) {
+          await logAction(userId, 'edit_date', itemId, { telegram_post_date: item.telegram_post_date }, { telegram_post_date: newDate.toISOString() });
+          await supabaseAdmin.from('parsed_items').update({ telegram_post_date: newDate.toISOString() }).eq('id', itemId);
+          await sendMessage(chatId, `✅ Tanggal <b>${item.title_for_list}</b> berhasil diupdate ke: <b>${newDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</b>`, { parse_mode: 'HTML' });
+        }
+        
+        await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
+        if (session.payload.return_to_review) {
+          await showNextReviewItem(chatId, session.payload.message_id);
+        }
+      }
+      else {
         await sendMessage(chatId, `Please use the buttons above or type /cancel to abort.`);
       }
     } else {

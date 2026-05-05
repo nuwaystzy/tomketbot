@@ -101,12 +101,48 @@ export async function POST(req: NextRequest) {
             await showNextReviewItem(chatId, messageId);
           }
         }
+        else if (data.startsWith('manage_item_')) {
+          const itemId = data.replace('manage_item_', '');
+          const { data: item } = await supabaseAdmin.from('parsed_items').select('*').eq('id', itemId).single();
+          if (item) {
+            const kb = {
+              inline_keyboard: [
+                [
+                  { text: '✏️ Nama', callback_data: `edit_name_${itemId}` },
+                  { text: '📂 Kategori', callback_data: `move_cat_${itemId}` }
+                ],
+                [
+                  { text: '📅 Tanggal', callback_data: `edit_date_${itemId}` },
+                  { text: '🗑️ Hapus', callback_data: `del_item_${itemId}` }
+                ],
+                [{ text: '🔙 Kembali', callback_data: `cancel_manage` }]
+              ]
+            };
+            const { editMessageText } = require('@/lib/telegram');
+            await editMessageText(chatId, messageId, `⚙️ <b>Kelola Item: ${item.title_for_list}</b>\n\nSilakan pilih aksi:`, { parse_mode: 'HTML', reply_markup: kb });
+            await answerCallbackQuery(callbackQueryId);
+          }
+        }
+        else if (data.startsWith('edit_date_')) {
+          const itemId = data.replace('edit_date_', '');
+          await supabaseAdmin.from('admin_sessions').upsert({
+             admin_id: userId, flow: 'edit', step: 'date', payload: { item_id: itemId, message_id: messageId, return_to_review: false }
+          });
+          await sendMessage(chatId, `Silakan ketik tanggal baru (Contoh: <code>1 May</code> atau <code>2026-05-01</code>):`, { parse_mode: 'HTML' });
+          await answerCallbackQuery(callbackQueryId);
+        }
         else if (data.startsWith('del_item_')) {
           const itemId = data.replace('del_item_', '');
           const { data: item } = await supabaseAdmin.from('parsed_items').select('title_for_list').eq('id', itemId).single();
           await supabaseAdmin.from('parsed_items').delete().eq('id', itemId);
           await answerCallbackQuery(callbackQueryId, `🗑️ Dihapus!`);
           await sendMessage(chatId, `🗑️ <b>${item?.title_for_list || 'Item'}</b> berhasil dihapus dari daftar.`);
+        }
+        else if (data === 'cancel_manage') {
+          await answerCallbackQuery(callbackQueryId);
+          // Just delete the sub-menu message to "go back"
+          const { deleteMessage } = require('@/lib/telegram');
+          await deleteMessage(chatId, messageId);
         }
         else if (data.startsWith('cancel_move_')) {
           await answerCallbackQuery(callbackQueryId, `Cancelled`);
