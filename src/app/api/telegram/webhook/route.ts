@@ -65,21 +65,28 @@ export async function POST(req: NextRequest) {
 
             // 1. Smart Name Extraction (if missing)
             if (prev.project_name?.includes('Perlu Review')) {
-              // Extract 2-3 words, avoiding common filler words
-              const words = text.split(/\s+/).filter(w => !['LINK:', 'HTTPS://', 'JOIN', 'NEW', 'AIRDROP'].includes(w.toUpperCase()));
+              const words = text.split(/\s+/).filter((w: string) => !['LINK:', 'HTTPS://', 'JOIN', 'NEW', 'AIRDROP', 'CHECK'].includes(w.toUpperCase()));
               const extractedName = words.slice(0, 3).join(' ').replace(/[^a-zA-Z0-9\s]/g, '').trim();
               updates.project_name = extractedName || 'Project';
               updates.title_for_list = extractedName || 'Project';
             }
 
-            // 2. Smart Category Detection (if PENDING_REVIEW)
+            // 2. Smart Category Detection (Hierarchy)
             if (prev.category === 'PENDING_REVIEW' || !prev.category) {
               const projName = updates.project_name || prev.project_name;
               
               if (textUpper.includes('WAITLIST') || textUpper.includes('WL ') || textUpper.includes('EARLY')) {
                 updates.category = 'WL_EARLY_ACCESS';
+              } else if (textUpper.includes('TESTNET')) {
+                updates.category = 'TESTNET';
+              } else if (textUpper.includes('NODE')) {
+                updates.category = 'NODE';
+              } else if (textUpper.includes('CLAIM') || textUpper.includes('ELIGIBLE') || textUpper.includes('CHECK')) {
+                updates.category = 'CLAIM_CHECK_ELIGIBLE';
+              } else if (textUpper.includes('MAINNET')) {
+                updates.category = 'MAINNET';
               } else {
-                // Check if project exists in DB to decide between AIRDROP or UPDATE
+                // If no specific keyword, check DB history
                 const { data: existing } = await supabaseAdmin
                   .from('parsed_items')
                   .select('id')
