@@ -11,6 +11,62 @@ export const isAdmin = (userId: number): boolean => {
 
 export const getAdminIds = (): string[] => TELEGRAM_ADMIN_IDS;
 
+/**
+ * Fetch the original date of a Telegram message by forwarding it silently
+ * to the first admin's DM, reading the forward_date, then deleting it.
+ * Returns null if unable to fetch.
+ */
+export const fetchTelegramMessageDate = async (sourceLink: string): Promise<Date | null> => {
+  try {
+    // Parse t.me/username/messageId or t.me/c/chatId/messageId
+    const match = sourceLink.match(/t\.me\/(?:c\/(\d+)|([^/]+))\/(\d+)/);
+    if (!match) return null;
+
+    const privateChatId = match[1]; // for private channels: t.me/c/123/456
+    const username = match[2];       // for public channels: t.me/channel/456
+    const messageId = parseInt(match[3]);
+
+    const fromChatId = privateChatId ? `-100${privateChatId}` : `@${username}`;
+    const adminId = TELEGRAM_ADMIN_IDS[0];
+    if (!adminId) return null;
+
+    // Forward silently to first admin DM
+    const fwdRes = await fetch(`${TELEGRAM_API_URL}/forwardMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: adminId,
+        from_chat_id: fromChatId,
+        message_id: messageId,
+        disable_notification: true
+      })
+    });
+
+    const fwdData = await fwdRes.json();
+    if (!fwdData.ok || !fwdData.result) return null;
+
+    // forward_date = original post date (Unix timestamp)
+    const originalDate = fwdData.result.forward_date
+      ? new Date(fwdData.result.forward_date * 1000)
+      : new Date(fwdData.result.date * 1000);
+
+    // Delete the forwarded message immediately to keep DM clean
+    await fetch(`${TELEGRAM_API_URL}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: adminId,
+        message_id: fwdData.result.message_id
+      })
+    });
+
+    return originalDate;
+  } catch (e) {
+    console.error('[fetchTelegramMessageDate] failed:', e);
+    return null;
+  }
+};
+
 export const sendMessage = async (chatId: string | number, text: string, options: any = {}) => {
   try {
     const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {

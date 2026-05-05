@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './supabaseAdmin';
-import { sendMessage, sendAdminRecapDraft, sendAdminItemPreview, getCategoryKeyboard } from './telegram';
+import { sendMessage, sendAdminRecapDraft, sendAdminItemPreview, getCategoryKeyboard, fetchTelegramMessageDate } from './telegram';
 import { generateRecapDraft } from './recapGenerator';
 import { DatabaseParsedItem } from '@/types';
 import { resolveCategoryAlias, CATEGORY_KEYS } from './categories';
@@ -196,25 +196,31 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
     }
     else if (command === '/add') {
       if (parts.length > 1) {
-        // One-line format
+        // One-line format: /add CATEGORY | Project Name | Link
         const payloadStr = text.replace('/add ', '').trim();
         const p = payloadStr.split('|').map(s => s.trim());
         if (p.length === 3) {
+          const sourceLink = p[2];
+          // Auto-detect original post date from t.me link
+          const originalDate = await fetchTelegramMessageDate(sourceLink);
+          const telegramPostDate = originalDate ? originalDate.toISOString() : new Date().toISOString();
+          const dateInfo = originalDate ? `📅 Tanggal terdeteksi: ${originalDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` : '📅 Tanggal: sekarang (link bukan dari Telegram)';
+
           const { data } = await supabaseAdmin.from('parsed_items').insert({
-            source_channel: 'admin_manual', message_id: Date.now(), source_link: p[2], original_text: payloadStr,
+            source_channel: 'admin_manual', message_id: Date.now(), source_link: sourceLink, original_text: payloadStr,
             category: resolveCategoryAlias(p[0]), project_name: p[1], title_for_list: p[1],
             summary: 'Manual entry', action: 'Manual entry', confidence: 1, status: 'pending', reason: 'Manually added by admin',
-            telegram_post_date: new Date().toISOString()
+            telegram_post_date: telegramPostDate
           }).select().single();
-          await sendMessage(chatId, `✅ Item manually added! ID: ${data?.display_id || data?.id}`);
+          await sendMessage(chatId, `✅ Item berhasil ditambahkan!\n${dateInfo}\nID: ${data?.display_id || data?.id}`);
           if (data) await sendAdminItemPreview(data as DatabaseParsedItem, chatId);
         } else {
-          await sendMessage(chatId, `Usage: /add CATEGORY | Project Name | Source Link\nOr just /add for guided wizard.`);
+          await sendMessage(chatId, `Format: /add KATEGORI | Nama Project | Link\nAtau ketik /add untuk wizard.`);
         }
       } else {
         // Guided wizard start
         await supabaseAdmin.from('admin_sessions').upsert({ admin_id: userId, flow: 'add', step: 'category', payload: {} });
-        await sendMessage(chatId, `🧙‍♂️ <b>Add Project Wizard</b>\n\nPlease select a category:`, { reply_markup: getCategoryKeyboard('wizard') });
+        await sendMessage(chatId, `🧙‍♂️ <b>Wizard Tambah Project</b>\n\nPilih kategori:`, { reply_markup: getCategoryKeyboard('wizard') });
       }
     }
     else if (command === '/settings') {
@@ -290,15 +296,23 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
       } 
       else if (session.step === 'link') {
         const payload = session.payload;
+        const sourceLink = text;
+        // Auto-detect original post date from t.me link
+        const originalDate = await fetchTelegramMessageDate(sourceLink);
+        const telegramPostDate = originalDate ? originalDate.toISOString() : new Date().toISOString();
+        const dateInfo = originalDate
+          ? `📅 Tanggal terdeteksi: ${originalDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
+          : '📅 Tanggal: sekarang';
+
         const { data } = await supabaseAdmin.from('parsed_items').insert({
-          source_channel: 'admin_manual', message_id: Date.now(), source_link: text, original_text: `Manual addition`,
+          source_channel: 'admin_manual', message_id: Date.now(), source_link: sourceLink, original_text: `Manual addition`,
           category: payload.category, project_name: payload.name, title_for_list: payload.name,
           summary: 'Manual entry', action: 'Manual entry', confidence: 1, status: 'pending', reason: 'Wizard',
-          telegram_post_date: new Date().toISOString()
+          telegram_post_date: telegramPostDate
         }).select().single();
         
         await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
-        await sendMessage(chatId, `✅ Wizard Complete! Item added with ID: ${data?.display_id || data?.id}`);
+        await sendMessage(chatId, `✅ Wizard selesai! ${dateInfo}\nID: ${data?.display_id || data?.id}`);
         if (data) await sendAdminItemPreview(data as DatabaseParsedItem, chatId);
       }
     }
