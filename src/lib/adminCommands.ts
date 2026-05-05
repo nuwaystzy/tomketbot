@@ -15,15 +15,21 @@ export const logAction = async (adminId: number, actionType: string, itemId: str
 };
 
 export const handleAdminCommand = async (chatId: number, userId: number, text: string) => {
+  const parts = text.split(' ');
+  const command = parts[0].toLowerCase();
+
   // Check active session first
   const { data: session } = await supabaseAdmin.from('admin_sessions').select('*').eq('admin_id', userId).single();
   if (session) {
-    await processSessionStep(chatId, userId, text, session);
-    return;
+    if (command.startsWith('/') && command !== '/cancel') {
+      // User typed a new command while in a session. Cancel the session automatically.
+      await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
+      await sendMessage(chatId, '⚠️ Previous wizard was automatically cancelled.');
+    } else {
+      await processSessionStep(chatId, userId, text, session);
+      return;
+    }
   }
-
-  const parts = text.split(' ');
-  const command = parts[0].toLowerCase();
 
   try {
     if (command === '/review') {
@@ -280,7 +286,11 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
         if (session.payload.return_to_review) {
           await showNextReviewItem(chatId, session.payload.message_id);
         }
+      } else {
+        await sendMessage(chatId, `Please use the buttons above or type /cancel to abort.`);
       }
+    } else {
+      await sendMessage(chatId, `Please use the buttons above or type /cancel to abort.`);
     }
   } catch (error: any) {
     console.error('Session Error:', error);
