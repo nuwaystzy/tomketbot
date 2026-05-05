@@ -104,31 +104,22 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
           const label = getCategoryLabel ? getCategoryLabel(catKey) : catKey;
           msg += `<b>${label}</b>\n`;
           grouped[catKey].forEach((item: any) => {
-            const id = item.display_id || item.id;
-            msg += `• ${item.title_for_list} <i>[ID:${id}]</i>\n`;
+            msg += `• ${item.title_for_list}\n`;
           });
           msg += '\n';
         }
       }
-
-      msg += `<i>Gunakan tombol di bawah untuk edit/hapus item.</i>`;
 
       // Compute actual date range from items
       const dates = data.map((i: any) => i.telegram_post_date?.split('T')[0]).filter(Boolean).sort();
       const actualStart = dates[0] || startDateStr;
       const actualEnd = dates[dates.length - 1] || endDateStr;
       
-      // Build inline keyboard: per-item Manage button, then Generate Recap
-      const itemButtons: any[][] = [];
-      data.forEach((item: any) => {
-        const id = item.id;
-        itemButtons.push([
-          { text: `⚙️ Kelola: ${item.title_for_list}`, callback_data: `manage_item_${id}` }
-        ]);
-      });
-      itemButtons.push([{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }]);
-
-      const inlineKeyboard = { inline_keyboard: itemButtons };
+      const inlineKeyboard = {
+        inline_keyboard: [
+          [{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }]
+        ]
+      };
       
 
       await sendMessage(chatId, msg, { reply_markup: inlineKeyboard });
