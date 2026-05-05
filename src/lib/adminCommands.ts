@@ -66,9 +66,9 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       
       let startDateStr: string;
       if (isWeek) {
+        // Last 7 days (more useful than Mon-Sun calendar week)
         const d = new Date(todayWIB);
-        const day = d.getUTCDay() || 7; // Mon=1...Sun=7
-        d.setUTCDate(d.getUTCDate() - (day - 1));
+        d.setUTCDate(d.getUTCDate() - 6); // 6 days back = 7 days total including today
         startDateStr = d.toISOString().split('T')[0];
       } else {
         startDateStr = endDateStr;

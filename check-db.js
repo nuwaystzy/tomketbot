@@ -6,13 +6,16 @@ const getVal = (key) => envFile.match(new RegExp(`${key}=(.+)`))[1].trim();
 
 const supabase = createClient(getVal('SUPABASE_URL'), getVal('SUPABASE_SERVICE_ROLE_KEY'));
 
-async function check() {
+async function fix() {
+  // Update Xenea to its actual post date: May 1, 2026
   const { data, error } = await supabase
     .from('parsed_items')
-    .select('project_name, category, status, telegram_post_date, date_found, created_at')
-    .eq('status', 'approved');
+    .update({ telegram_post_date: '2026-05-01T07:52:00.000Z' })
+    .ilike('project_name', '%xenea%')
+    .select();
+  
   if (error) console.error(error);
-  else data.forEach(i => console.log(`${i.project_name} | status=${i.status} | telegram_post_date=${i.telegram_post_date} | date_found=${i.date_found} | created_at=${i.created_at}`));
+  else console.log('Updated:', data.map(i => `${i.project_name} -> ${i.telegram_post_date}`));
 }
 
-check();
+fix();
