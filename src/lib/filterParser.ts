@@ -1,34 +1,46 @@
 import { TelegramUpdate, TelegramMessage, DatabaseParsedItem } from '@/types';
 import { parseWithGemini } from './gemini';
 import { supabaseAdmin } from './supabaseAdmin';
-import { sendAdminItemPreview } from './telegram';
+import { sendAdminItemPreview, isAdmin } from './telegram';
 
 const TELEGRAM_SOURCE_CHANNELS = (process.env.TELEGRAM_SOURCE_CHANNELS || '').split(',').map(c => c.trim().toLowerCase());
 
-// Rule-based prefilter to save API quota
+// Rule-based prefilter - lax enough to catch all legit posts
 const isPotentiallyActionable = (text: string): boolean => {
   if (!text) return false;
   
   const lowerText = text.toLowerCase();
-  
+
+  // Always pass if it contains a URL
+  if (text.includes('http') || text.includes('t.me/') || text.includes('.xyz') || text.includes('.io') || text.includes('.com')) {
+    return true;
+  }
+
+  // Always pass if short #hashtag message (might be a tag-only update)
+  if (text.startsWith('#')) return true;
+
   // Skip very short messages without links
-  if (text.length < 20 && !text.includes('http') && !text.includes('t.me')) return false;
+  if (text.length < 20) return false;
 
-  // Simple keyword check
-  const actionKeywords = ['new', 'join', 'claim', 'mint', 'testnet', 'waitlist', 'node', 'airdrop', 'task', 'point', 'register', 'submit', 'faucet', 'update'];
+  // Broad keyword check (multi-language)
+  const actionKeywords = [
+    // English
+    'new', 'join', 'claim', 'mint', 'testnet', 'waitlist', 'node', 'airdrop', 'task',
+    'point', 'register', 'submit', 'faucet', 'update', 'launch', 'live', 'open', 'now',
+    'reward', 'eligible', 'snapshot', 'allocation', 'phase', 'season', 'check',
+    // Indonesian
+    'daftar', 'cek', 'klaim', 'hadiah', 'gratis', 'bergabung', 'ayo', 'ikut', 'migrasi',
+    'alokasi', 'snapshot', 'eligibel', 'mainnet', 'airdrop'
+  ];
   const hasKeyword = actionKeywords.some(kw => lowerText.includes(kw));
-  
-  if (!hasKeyword && !text.includes('http')) {
-    return false;
-  }
+  if (hasKeyword) return true;
 
-  // Known skip phrases
-  const skipPhrases = ['good morning', 'gm', 'gn', 'market crash', 'btc', 'eth', 'wkwk', 'haha', 'lol', 'lmao'];
-  if (skipPhrases.some(phrase => lowerText === phrase)) {
-      return false;
-  }
+  // Hard-skip only pure social phrases
+  const hardSkip = ['good morning', 'selamat pagi', 'gm ', '^gm$', '^gn$', 'market crash'];
+  if (hardSkip.some(phrase => lowerText.includes(phrase))) return false;
 
-  return true;
+  // Default: pass if longer than 100 chars (let AI decide)
+  return text.length > 100;
 };
 
 export const parseTelegramPost = async (update: TelegramUpdate) => {
@@ -40,42 +52,36 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
   const chatId = message.chat.id;
   const text = message.text || message.caption || '';
   const messageId = message.message_id;
-  
-  // Only process if it's from a whitelisted channel OR if it's sent directly to the bot in DM by an admin
   const isDM = message.chat.type === 'private';
-  
-  // Temporary Debug Broadcast
-  const { broadcastToAdmins } = require('./telegram');
-  await broadcastToAdmins(`[DEBUG] Received message_id: ${messageId} from channel: ${channelUsername}. isDM: ${isDM}. text length: ${text.length}`);
 
+  // Log to console (not to Telegram DM)
+  console.log(`[FILTER] msg_id=${messageId} channel=${channelUsername || chatId} isDM=${isDM} textLen=${text.length}`);
+
+  // Channel whitelist check
   if (!isDM) {
     if (!channelUsername && !TELEGRAM_SOURCE_CHANNELS.includes(chatId.toString())) {
-      await broadcastToAdmins(`[DEBUG] Dropped: Not whitelisted private channel. ID: ${chatId}`);
-      return; 
-    }
-    
-    if (channelUsername && TELEGRAM_SOURCE_CHANNELS.length > 0 && !TELEGRAM_SOURCE_CHANNELS.includes(channelUsername)) {
-      await broadcastToAdmins(`[DEBUG] Dropped: Not whitelisted public channel. Username: ${channelUsername}`);
-      return; 
-    }
-  } else {
-    const { isAdmin } = require('./telegram');
-    if (!isAdmin(message.from?.id || 0)) {
+      console.log(`[FILTER] Dropped: not whitelisted private channel ${chatId}`);
       return;
     }
+    if (channelUsername && TELEGRAM_SOURCE_CHANNELS.length > 0 && !TELEGRAM_SOURCE_CHANNELS.includes(channelUsername)) {
+      console.log(`[FILTER] Dropped: not whitelisted channel @${channelUsername}`);
+      return;
+    }
+  } else {
+    if (!isAdmin(message.from?.id || 0)) return;
   }
 
   if (!text) {
-     await broadcastToAdmins(`[DEBUG] Dropped: No text`);
-     return;
+    console.log(`[FILTER] Dropped: no text`);
+    return;
   }
 
-  const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `Direct Message`;
+  const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `DM`;
   const telegramPostDate = new Date(message.date * 1000).toISOString();
 
   // 1. Rule-based prefilter
   if (!isPotentiallyActionable(text)) {
-    // Save as skipped
+    console.log(`[FILTER] Prefilter dropped msg_id=${messageId}`);
     await supabaseAdmin.from('parsed_items').insert({
       source_channel: channelUsername || chatId.toString(),
       message_id: messageId,
@@ -84,44 +90,47 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
       category: 'SKIP',
       project_name: 'Prefiltered',
       title_for_list: 'Prefiltered',
-      summary: 'Dropped by prefilter (no links/keywords)',
-      action: 'None',
+      summary: 'Dropped by prefilter',
+      action: null,
       confidence: 0,
       status: 'skipped',
-      reason: 'Prefilter: Not actionable',
+      reason: 'Prefilter: no keywords or URL',
       telegram_post_date: telegramPostDate
     });
     return;
   }
 
-  // 2. Call Gemini
-  const promptInput = `
-Source Channel: ${channelUsername ? '@' + channelUsername : chatId}
+  // 2. Force #update tag - mark before AI call
+  const isUpdateTag = text.toLowerCase().includes('#update') || text.toLowerCase().includes('#info');
+
+  // 3. Call Gemini AI
+  const promptInput = `Source Channel: ${channelUsername ? '@' + channelUsername : chatId}
 Message ID: ${messageId}
 Source Link: ${sourceLink}
 Message Text:
-${text}
-`;
+${text}`;
 
+  console.log(`[FILTER] Calling Gemini for msg_id=${messageId}...`);
   const { data, error, rawResponse, model } = await parseWithGemini(promptInput);
 
   let itemsToSave: DatabaseParsedItem[] = [];
 
   if (error || !data || !data.items || data.items.length === 0) {
-    // Fallback: save as pending review
+    // Gemini failed - save as pending so admin can review manually
+    console.log(`[FILTER] Gemini failed for msg_id=${messageId}: ${error}`);
     itemsToSave.push({
       source_channel: channelUsername || chatId.toString(),
       message_id: messageId,
       source_link: sourceLink,
       original_text: text,
       category: 'PENDING_REVIEW',
-      project_name: 'Unknown',
-      title_for_list: 'Unknown',
-      summary: null,
+      project_name: '⚠️ Perlu Review Manual',
+      title_for_list: '⚠️ Perlu Review Manual',
+      summary: `Teks asli: ${text.substring(0, 200)}`,
       action: null,
       confidence: 0,
       status: 'pending',
-      reason: error ? 'Gemini Error: ' + error : 'Invalid AI Response',
+      reason: error ? `AI Error: ${error.substring(0, 200)}` : 'AI tidak memberi respons valid',
       raw_ai_response: rawResponse,
       ai_model: model,
       ai_error: error,
@@ -130,54 +139,37 @@ ${text}
     });
   } else {
     data.items.forEach(item => {
-      // Force #update tags to bypass AI skips
-      const isUpdateTag = text.toLowerCase().includes('#update');
-      
-      // Skip logic from AI
-      if (!isUpdateTag && (!item.is_valid || item.category === 'SKIP')) {
-         if (item.category === 'PENDING_REVIEW') {
-             itemsToSave.push({
-                source_channel: channelUsername || chatId.toString(),
-                message_id: messageId,
-                source_link: sourceLink,
-                original_text: text,
-                category: item.category,
-                project_name: item.project_name || 'Unknown',
-                title_for_list: item.title_for_list || 'Unknown',
-                summary: item.summary,
-                action: item.action,
-                confidence: item.confidence,
-                status: 'pending',
-                reason: item.reason,
-                raw_ai_response: rawResponse,
-                ai_model: model,
-                ai_error: null,
-                raw_update: update,
-                telegram_post_date: telegramPostDate
-             });
-         } else {
-             // Save AI skips so admin can see them in /status -> Skipped
-             itemsToSave.push({
-                source_channel: channelUsername || chatId.toString(),
-                message_id: messageId,
-                source_link: sourceLink,
-                original_text: text,
-                category: item.category || 'SKIP',
-                project_name: item.project_name || 'Unknown',
-                title_for_list: item.title_for_list || 'Unknown',
-                summary: item.summary,
-                action: item.action,
-                confidence: item.confidence,
-                status: 'skipped',
-                reason: item.reason || 'AI classified as SKIP',
-                raw_ai_response: rawResponse,
-                ai_model: model,
-                ai_error: null,
-                raw_update: update,
-                telegram_post_date: telegramPostDate
-             });
-         }
-         return;
+      const forceValid = isUpdateTag;
+      const shouldSkip = !forceValid && (!item.is_valid || item.category === 'SKIP');
+
+      if (shouldSkip) {
+        // Save as skipped (visible in /status → Skipped)
+        itemsToSave.push({
+          source_channel: channelUsername || chatId.toString(),
+          message_id: messageId,
+          source_link: sourceLink,
+          original_text: text,
+          category: item.category || 'SKIP',
+          project_name: item.project_name || 'Unknown',
+          title_for_list: item.title_for_list || 'Unknown',
+          summary: item.summary,
+          action: item.action,
+          confidence: item.confidence,
+          status: 'skipped',
+          reason: item.reason || 'AI classified as SKIP',
+          raw_ai_response: rawResponse,
+          ai_model: model,
+          ai_error: null,
+          raw_update: update,
+          telegram_post_date: telegramPostDate
+        });
+        return;
+      }
+
+      // Determine final category
+      let finalCategory = item.category;
+      if (forceValid && (item.category === 'SKIP' || !item.category)) {
+        finalCategory = 'UPDATE';
       }
 
       itemsToSave.push({
@@ -185,14 +177,14 @@ ${text}
         message_id: messageId,
         source_link: sourceLink,
         original_text: text,
-        category: isUpdateTag && (item.category === 'SKIP' || !item.category) ? 'UPDATE' : item.category,
-        project_name: item.project_name || 'Unknown Update',
-        title_for_list: item.title_for_list || 'Update',
+        category: finalCategory,
+        project_name: item.project_name || (forceValid ? 'Update' : 'Unknown'),
+        title_for_list: item.title_for_list || (forceValid ? 'Update' : 'Unknown'),
         summary: item.summary,
         action: item.action,
         confidence: item.confidence,
-        status: 'pending', 
-        reason: isUpdateTag ? 'Forced by #update tag' : item.reason,
+        status: 'pending',
+        reason: forceValid && !item.reason ? 'Forced by #update/#info tag' : item.reason,
         raw_ai_response: rawResponse,
         ai_model: model,
         ai_error: null,
@@ -202,7 +194,7 @@ ${text}
     });
   }
 
-  // 3. Save to Supabase and notify Admin
+  // 4. Save to Supabase and notify Admin
   for (const item of itemsToSave) {
     try {
       const { data: insertedItem, error: dbError } = await supabaseAdmin
@@ -212,17 +204,18 @@ ${text}
         .single();
         
       if (dbError) {
-        if (dbError.code === '23505') { // Unique violation
-          console.log(`Duplicate item detected: ${item.source_link}`);
+        if (dbError.code === '23505') {
+          console.log(`[FILTER] Duplicate: ${item.source_link}`);
         } else {
-          console.error('Supabase insert error:', dbError);
+          console.error('[FILTER] Supabase insert error:', dbError);
         }
       } else if (insertedItem) {
-        // Send DM to admin
-        await sendAdminItemPreview(insertedItem as DatabaseParsedItem);
+        if (item.status === 'pending') {
+          await sendAdminItemPreview(insertedItem as DatabaseParsedItem);
+        }
       }
     } catch (e) {
-      console.error('Database operation failed:', e);
+      console.error('[FILTER] DB operation failed:', e);
     }
   }
 };

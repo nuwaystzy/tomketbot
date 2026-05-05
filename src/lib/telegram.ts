@@ -111,18 +111,23 @@ export const getCategoryKeyboard = (itemId: string | number) => {
 export const sendAdminItemPreview = async (item: DatabaseParsedItem, targetChatId?: number, editMessageId?: number) => {
   const confPercent = item.confidence ? Math.round(item.confidence * 100) : 0;
   const confLabel = getConfidenceLabel(item.confidence);
+
+  // Show original text preview when project name is Unknown or AI failed
+  const showOriginalPreview = !item.project_name || item.project_name === 'Unknown' || item.project_name.includes('Perlu Review');
+  const originalPreview = showOriginalPreview && item.original_text
+    ? `\n<b>Teks Asli:</b> <i>${(item.original_text || '').substring(0, 250)}...</i>` 
+    : '';
   
   const text = `
-<b>${item.status === 'pending' ? '⚠️ Pending Review' : '✅ Approved Item'}</b>
+${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved Item</b>'}
 
-<b>Category:</b> ${item.category}
-<b>Project:</b> ${item.title_for_list}
+<b>Kategori:</b> ${item.category}
+<b>Project:</b> ${item.project_name || '❓ Tidak Terdeteksi'}
 <b>Source:</b> ${item.source_link}
 <b>Confidence:</b> ${confPercent}% (${confLabel})
 <b>Reason:</b> ${item.reason || 'N/A'}
-
 <b>Summary:</b> ${item.summary || 'N/A'}
-<b>Action:</b> ${item.action || 'N/A'}
+<b>Action:</b> ${item.action || 'N/A'}${originalPreview}
 
 <i>ID: ${item.display_id || item.id}</i>
 `;

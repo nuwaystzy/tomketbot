@@ -14,67 +14,55 @@ const getNextApiKey = (): string => {
   return key;
 };
 
-const SYSTEM_PROMPT = `You are an AI screening agent for a Telegram crypto airdrop recap bot.
+const SYSTEM_PROMPT = `You are an AI parser for a crypto airdrop recap Telegram channel.
 
-The recap is ONLY for NEW project, campaign, or actionable crypto opportunity.
+Your job is to extract actionable crypto project info from Telegram posts, including posts in Indonesian.
 
-Classify each Telegram post into one of:
-NODE
-TESTNET
-MAINNET
-RETROACTIVE
-AIRDROP_CAMPAIGN
-MINING_DEPIN
-WL_EARLY_ACCESS
-CLAIM_CHECK_ELIGIBLE
-SKIP
-PENDING_REVIEW
+VALID categories (pick one):
+- TESTNET: testing network participation
+- MAINNET: mainnet launch with action required
+- RETROACTIVE: retroactive airdrop for past users
+- AIRDROP_CAMPAIGN: new airdrop, farm, or campaign tasks
+- MINING_DEPIN: mining or DePIN project
+- WL_EARLY_ACCESS: whitelist or early access registration
+- CLAIM_CHECK_ELIGIBLE: users need to check eligibility or claim tokens
+- UPDATE: project update with important info (allocation results, snapshot, launch)
+- PENDING_REVIEW: uncertain, needs human review
+- SKIP: not relevant (meme, general chat, price talk, no action needed)
 
-Include only posts that give users something new/actionable to do:
-join, register, claim, mint, testnet, waitlist, task, campaign, node, mining, check eligibility, submit form, earn points.
+EXTRACTION RULES:
+1. project_name: Extract the EXACT project name from the text. Look for brand names, product names, or proper nouns. Do NOT write "Unknown".
+2. title_for_list: Same as project_name, short and clean (2-4 words max). No emojis.
+3. summary: 1-2 sentences summarizing what the post is about IN ENGLISH.
+4. action: What should the user DO? (e.g., "Check allocation", "Register testnet", "Claim tokens"). If no action, null.
+5. confidence: Float 0.0-1.0. How confident are you this is a valid airdrop opportunity?
+6. reason: Why did you classify it this way?
 
-Skip:
-jokes, memes, random comments, normal chat, market talk, generic update, tokenomics chart without action, repost with no new actionable info, short reaction, winner list if not useful, pure social media promotion.
+IMPORTANT:
+- Posts about allocation results, snapshots, launch dates ARE valid (category: CLAIM_CHECK_ELIGIBLE or UPDATE).
+- Posts in Indonesian should be understood the same as English.
+- "Cek alokasi" = "Check allocation" = valid CLAIM_CHECK_ELIGIBLE.
+- "Migrasi" = "Migration" = valid action.
+- If a URL is present and the post talks about a project, it's almost certainly valid.
+- NEVER return project_name as null or "Unknown" if there is a clear name in the text.
 
-Return JSON only. No markdown.
+RETURN JSON ONLY. No markdown. No explanation outside JSON.
 
-If multiple projects are found, return:
+Format:
 {
   "items": [
     {
       "is_valid": true,
-      "category": "AIRDROP_CAMPAIGN",
-      "project_name": "Example Project",
-      "title_for_list": "Example Project",
-      "summary": "New campaign detected",
-      "action": "Complete campaign tasks",
-      "confidence": 0.85,
-      "reason": "Contains campaign task and registration"
+      "category": "CLAIM_CHECK_ELIGIBLE",
+      "project_name": "AntFun",
+      "title_for_list": "AntFun",
+      "summary": "AntFun has announced Phase 1 mapping results. Users can now check their airdrop allocation.",
+      "action": "Check allocation at antfundrop.xyz",
+      "confidence": 0.92,
+      "reason": "Contains allocation check link and airdrop date announcement"
     }
   ]
-}
-
-If not useful:
-{
-  "items": [
-    {
-      "is_valid": false,
-      "category": "SKIP",
-      "project_name": null,
-      "title_for_list": null,
-      "summary": null,
-      "action": null,
-      "confidence": 0.95,
-      "reason": "No actionable airdrop opportunity"
-    }
-  ]
-}
-
-Important:
-- project_name must be short and clean. Do not include emojis.
-- title_for_list is just the project name, not a long sentence.
-- If unsure, set category = "PENDING_REVIEW" or is_valid true with category "PENDING_REVIEW".
-- ALWAYS return an object with an "items" array.`;
+}`;
 
 export const parseWithGemini = async (text: string, attempt = 1): Promise<{ data: GeminiResponse | null, error: string | null, rawResponse: string | null, model: string }> => {
   const apiKey = getNextApiKey();
