@@ -45,33 +45,30 @@ export async function POST(req: NextRequest) {
       const messageId = callbackQuery.message?.message_id;
 
       if (userId && isAdmin(userId) && data && chatId && messageId) {
+        // INSTANT RESPONSE: Removes loading spinner immediately
+        await answerCallbackQuery(callbackQueryId);
         
         const getPrevState = async (id: string) => {
-           const { data } = await supabaseAdmin.from('parsed_items').select('*').eq('id', id).single();
+           const { data } = await supabaseAdmin.from('parsed_items').select('id, category').eq('id', id).single();
            return data;
         };
 
         if (data.startsWith('app_next_')) {
           const itemId = data.replace('app_next_', '');
-          const prev = await getPrevState(itemId);
           await logAction(userId, 'approve', itemId, { status: 'pending' }, { status: 'approved' });
           await supabaseAdmin.from('parsed_items').update({ status: 'approved' }).eq('id', itemId);
-          await answerCallbackQuery(callbackQueryId, '✅ Approved');
           await showNextReviewItem(chatId, messageId);
         } 
         else if (data.startsWith('skip_next_')) {
           const itemId = data.replace('skip_next_', '');
-          const prev = await getPrevState(itemId);
           await logAction(userId, 'skip', itemId, { status: 'pending' }, { status: 'skipped' });
           await supabaseAdmin.from('parsed_items').update({ status: 'skipped' }).eq('id', itemId);
-          await answerCallbackQuery(callbackQueryId, '❌ Skipped');
           await showNextReviewItem(chatId, messageId);
         }
         else if (data.startsWith('move_cat_')) {
           const itemId = data.replace('move_cat_', '');
           const { editMessageText } = require('@/lib/telegram');
           await editMessageText(chatId, messageId, `Select new category:`, getCategoryKeyboard(itemId));
-          await answerCallbackQuery(callbackQueryId);
         }
         else if (data.startsWith('edit_name_')) {
           const itemId = data.replace('edit_name_', '');
@@ -79,7 +76,6 @@ export async function POST(req: NextRequest) {
              admin_id: userId, flow: 'edit', step: 'name', payload: { item_id: itemId, message_id: messageId, return_to_review: true }
           });
           await sendMessage(chatId, `Please type the new project name for this item:`);
-          await answerCallbackQuery(callbackQueryId);
         }
         else if (data.startsWith('move_to_')) {
           const parts = data.split('_');
@@ -90,14 +86,12 @@ export async function POST(req: NextRequest) {
              await supabaseAdmin.from('admin_sessions').update({ step: 'name', payload: { category: cat } }).eq('admin_id', userId);
              const { editMessageText } = require('@/lib/telegram');
              await editMessageText(chatId, messageId, `Category selected: <b>${cat}</b>\n\nPlease type the Project Name:`, { parse_mode: 'HTML' });
-             await answerCallbackQuery(callbackQueryId);
           } else {
             const prev = await getPrevState(itemId);
             if (prev) {
                await logAction(userId, 'move_cat', itemId, { category: prev.category }, { category: cat });
                await supabaseAdmin.from('parsed_items').update({ category: cat }).eq('id', itemId);
             }
-            await answerCallbackQuery(callbackQueryId, `Moved to ${cat}`);
             await showNextReviewItem(chatId, messageId);
           }
         }
@@ -120,7 +114,6 @@ export async function POST(req: NextRequest) {
             };
             const { editMessageText } = require('@/lib/telegram');
             await editMessageText(chatId, messageId, `⚙️ <b>Kelola Item: ${item.title_for_list}</b>\n\nSilakan pilih aksi:`, { parse_mode: 'HTML', reply_markup: kb });
-            await answerCallbackQuery(callbackQueryId);
           }
         }
         else if (data.startsWith('edit_date_')) {
@@ -129,7 +122,6 @@ export async function POST(req: NextRequest) {
              admin_id: userId, flow: 'edit', step: 'date', payload: { item_id: itemId, message_id: messageId, return_to_review: false }
           });
           await sendMessage(chatId, `Silakan ketik tanggal baru (Contoh: <code>1 May</code> atau <code>2026-05-01</code>):`, { parse_mode: 'HTML' });
-          await answerCallbackQuery(callbackQueryId);
         }
         else if (data.startsWith('del_mode_')) {
           const parts = data.split('_');
@@ -154,23 +146,19 @@ export async function POST(req: NextRequest) {
             ]
           };
           await sendMessage(chatId, `<b>Mode Hapus</b>\nKlik pada project yang ingin dihapus dari daftar:`, { parse_mode: 'HTML', reply_markup: kb });
-          await answerCallbackQuery(callbackQueryId);
         }
         else if (data.startsWith('del_item_')) {
           const itemId = data.replace('del_item_', '');
           const { data: item } = await supabaseAdmin.from('parsed_items').select('title_for_list').eq('id', itemId).single();
           await supabaseAdmin.from('parsed_items').delete().eq('id', itemId);
-          await answerCallbackQuery(callbackQueryId, `🗑️ Dihapus!`);
           await sendMessage(chatId, `🗑️ <b>${item?.title_for_list || 'Item'}</b> berhasil dihapus.`);
         }
         else if (data === 'cancel_manage') {
-          await answerCallbackQuery(callbackQueryId);
           // Just delete the sub-menu message to "go back"
           const { deleteMessage } = require('@/lib/telegram');
           await deleteMessage(chatId, messageId);
         }
         else if (data.startsWith('cancel_move_')) {
-          await answerCallbackQuery(callbackQueryId, `Cancelled`);
           await showNextReviewItem(chatId, messageId);
         }
         else if (data.startsWith('view_status_')) {
@@ -194,7 +182,6 @@ export async function POST(req: NextRequest) {
           const parts = data.split('_');
           const end = parts.pop()!;
           const start = parts.pop()!;
-          await answerCallbackQuery(callbackQueryId, `Generating Recap...`);
           const recapDraft = await generateRecapDraft(start, end);
           await sendAdminRecapDraft(recapDraft);
         }
