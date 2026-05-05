@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Airdrop Recap Telegram Bot
 
-## Getting Started
+A Next.js serverless application that monitors a Telegram channel for new crypto airdrop/project opportunities, uses Gemini AI to filter and categorize them, saves them to Supabase, and provides an admin interface via Telegram DMs to generate daily/weekly recaps.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Automated Monitoring:** Listens to Telegram channel posts via Webhook.
+- **AI-Powered Parsing:** Uses Gemini Pro to extract project names, categories, and actions.
+- **Cost Saving:** Rule-based prefilter to avoid calling Gemini for obvious chatter.
+- **Resilience:** Multi-key support for Gemini API with fallback to manual admin review.
+- **Admin Interface:** Approve/Skip items, move categories, edit names, and generate recaps directly from Telegram DMs.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Prerequisites
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Node.js 18+
+- [Supabase](https://supabase.com) Project
+- Telegram Bot Token (from BotFather)
+- Gemini API Key (from Google AI Studio)
+- Vercel account (for deployment)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Setup Instructions
 
-## Learn More
+1. **Clone the repository and install dependencies:**
+   ```bash
+   npm install
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. **Database Setup:**
+   - Go to your Supabase project.
+   - Open the SQL Editor and run the SQL provided in `supabase/schema.sql`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. **Environment Variables:**
+   - Copy `.env.example` to `.env.local`:
+     ```bash
+     cp .env.example .env.local
+     ```
+   - Fill in the required credentials. Find your Telegram User ID using `@userinfobot` on Telegram.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. **Run Locally:**
+   - Since this relies on webhooks, you need a public URL. You can use `ngrok`:
+     ```bash
+     ngrok http 3000
+     ```
+   - Start the Next.js dev server:
+     ```bash
+     npm run dev
+     ```
+   - Set the webhook to your ngrok URL:
+     ```bash
+     curl -F "url=https://<your-ngrok-url>/api/telegram/webhook" -F "secret_token=<YOUR_WEBHOOK_SECRET>" https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
+     ```
 
-## Deploy on Vercel
+## Deployment (Vercel)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Push this code to a GitHub repository.
+2. Import the project into Vercel.
+3. Add all the environment variables from `.env.local` to Vercel's Environment Variables settings.
+4. Deploy.
+5. Set the webhook to your Vercel URL:
+   ```bash
+   curl -F "url=https://<your-vercel-app>.vercel.app/api/telegram/webhook" -F "secret_token=<YOUR_WEBHOOK_SECRET>" https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Admin Commands
+
+Send these commands directly to your Bot in Telegram:
+
+- `/pending` - View up to 5 pending items.
+- `/approve <item_id>` - Approve an item.
+- `/skip <item_id>` - Skip an item.
+- `/move <item_id> <CATEGORY>` - Move an item to a new category.
+- `/edit <item_id> <New Name>` - Edit the project name.
+- `/add <CATEGORY> | <Project Name> | <Source Link>` - Manually add an item.
+- `/recap YYYY-MM-DD YYYY-MM-DD` - Generate a recap for the given dates.
+- `/preview YYYY-MM-DD YYYY-MM-DD` - Preview the recap.
+- `/skipped YYYY-MM-DD YYYY-MM-DD` - View skipped items for the given dates.
+- `/restore <item_id>` - Restore a skipped item to pending.

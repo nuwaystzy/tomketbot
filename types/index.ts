@@ -1,0 +1,84 @@
+export interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
+  channel_post?: TelegramMessage;
+  edited_channel_post?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
+}
+
+export interface TelegramMessage {
+  message_id: number;
+  from?: {
+    id: number;
+    is_bot: boolean;
+    first_name: string;
+    username?: string;
+  };
+  chat: {
+    id: number;
+    title?: string;
+    username?: string;
+    type: string;
+  };
+  date: number;
+  text?: string;
+  caption?: string;
+  entities?: TelegramEntity[];
+  caption_entities?: TelegramEntity[];
+}
+
+export interface TelegramEntity {
+  offset: number;
+  length: number;
+  type: string;
+  url?: string;
+}
+
+export interface TelegramCallbackQuery {
+  id: string;
+  from: {
+    id: number;
+    is_bot: boolean;
+    first_name: string;
+    username?: string;
+  };
+  message?: TelegramMessage;
+  data?: string;
+}
+
+export interface ParsedItem {
+  is_valid: boolean;
+  category: string;
+  project_name: string | null;
+  title_for_list: string | null;
+  summary: string | null;
+  action: string | null;
+  confidence: number;
+  reason: string;
+}
+
+export interface GeminiResponse {
+  items: ParsedItem[];
+}
+
+export interface DatabaseParsedItem {
+  id?: string;
+  source_channel: string;
+  message_id: number;
+  source_link: string;
+  original_text: string;
+  category: string;
+  project_name: string | null;
+  title_for_list: string | null;
+  summary: string | null;
+  action: string | null;
+  confidence: number | null;
+  status: 'pending' | 'approved' | 'skipped' | 'posted';
+  reason: string | null;
+  raw_ai_response?: any;
+  ai_model?: string;
+  ai_error?: string | null;
+  raw_update?: any;
+  telegram_post_date?: string;
+  date_found?: string;
+}
