@@ -43,8 +43,10 @@ IMPORTANT:
 - Posts in Indonesian should be understood the same as English.
 - "Cek alokasi" = "Check allocation" = valid CLAIM_CHECK_ELIGIBLE.
 - "Migrasi" = "Migration" = valid action.
-- If a URL is present and the post talks about a project, it's almost certainly valid.
-- NEVER return project_name as null or "Unknown" if there is a clear name in the text.
+- If a URL is present and the post mentions a project (even if very short like "Jule Waitlist"), it's VALID.
+- Be aggressive in identifying project names from short text.
+- If the text is "ProjectName Waitlist", project_name is "ProjectName" and category is "WL_EARLY_ACCESS".
+- NEVER return project_name as null or "Unknown" if there is any brand or proper noun.
 
 RETURN JSON ONLY. No markdown. No explanation outside JSON.
 

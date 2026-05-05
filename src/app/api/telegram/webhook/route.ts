@@ -55,8 +55,20 @@ export async function POST(req: NextRequest) {
 
         if (data.startsWith('app_next_')) {
           const itemId = data.replace('app_next_', '');
-          await logAction(userId, 'approve', itemId, { status: 'pending' }, { status: 'approved' });
-          await supabaseAdmin.from('parsed_items').update({ status: 'approved' }).eq('id', itemId);
+          const prev = await supabaseAdmin.from('parsed_items').select('id, category, project_name, original_text').eq('id', itemId).single();
+          
+          const updates: any = { status: 'approved' };
+          if (prev.data && (prev.data.category === 'PENDING_REVIEW' || !prev.data.category)) {
+            updates.category = 'UPDATE';
+          }
+          if (prev.data && prev.data.project_name?.includes('Perlu Review')) {
+            const firstWord = prev.data.original_text?.trim().split(/\s+/)[0] || 'Project';
+            updates.project_name = firstWord;
+            updates.title_for_list = firstWord;
+          }
+
+          await logAction(userId, 'approve', itemId, { status: 'pending' }, updates);
+          await supabaseAdmin.from('parsed_items').update(updates).eq('id', itemId);
           await showNextReviewItem(chatId, messageId);
         } 
         else if (data.startsWith('skip_next_')) {
