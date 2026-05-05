@@ -131,12 +131,37 @@ export async function POST(req: NextRequest) {
           await sendMessage(chatId, `Silakan ketik tanggal baru (Contoh: <code>1 May</code> atau <code>2026-05-01</code>):`, { parse_mode: 'HTML' });
           await answerCallbackQuery(callbackQueryId);
         }
+        else if (data.startsWith('del_mode_')) {
+          const parts = data.split('_');
+          const start = parts[2];
+          const end = parts[3];
+          const { data: items } = await supabaseAdmin
+            .from('parsed_items')
+            .select('id, title_for_list')
+            .eq('status', 'approved')
+            .gte('telegram_post_date', `${start}T00:00:00.000Z`)
+            .lte('telegram_post_date', `${end}T23:59:59.999Z`);
+          
+          if (!items || items.length === 0) {
+            await answerCallbackQuery(callbackQueryId, `Tidak ada item untuk dihapus`);
+            return;
+          }
+
+          const kb = {
+            inline_keyboard: [
+              ...items.map(item => ([{ text: `🗑️ ${item.title_for_list}`, callback_data: `del_item_${item.id}` }])),
+              [{ text: '🔙 Kembali', callback_data: 'cancel_manage' }]
+            ]
+          };
+          await sendMessage(chatId, `<b>Mode Hapus</b>\nKlik pada project yang ingin dihapus dari daftar:`, { parse_mode: 'HTML', reply_markup: kb });
+          await answerCallbackQuery(callbackQueryId);
+        }
         else if (data.startsWith('del_item_')) {
           const itemId = data.replace('del_item_', '');
           const { data: item } = await supabaseAdmin.from('parsed_items').select('title_for_list').eq('id', itemId).single();
           await supabaseAdmin.from('parsed_items').delete().eq('id', itemId);
           await answerCallbackQuery(callbackQueryId, `🗑️ Dihapus!`);
-          await sendMessage(chatId, `🗑️ <b>${item?.title_for_list || 'Item'}</b> berhasil dihapus dari daftar.`);
+          await sendMessage(chatId, `🗑️ <b>${item?.title_for_list || 'Item'}</b> berhasil dihapus.`);
         }
         else if (data === 'cancel_manage') {
           await answerCallbackQuery(callbackQueryId);

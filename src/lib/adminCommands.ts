@@ -104,7 +104,8 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
           const label = getCategoryLabel ? getCategoryLabel(catKey) : catKey;
           msg += `<b>${label}</b>\n`;
           grouped[catKey].forEach((item: any) => {
-            msg += `• ${item.title_for_list}\n`;
+            const id = item.display_id || item.id;
+            msg += `• ${item.title_for_list} <b>[ID:${id}]</b>\n`;
           });
           msg += '\n';
         }
@@ -117,7 +118,8 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       
       const inlineKeyboard = {
         inline_keyboard: [
-          [{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }]
+          [{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }],
+          [{ text: `🗑️ Hapus Item dari Daftar`, callback_data: `del_mode_${startDateStr}_${endDateStr}` }]
         ]
       };
       
