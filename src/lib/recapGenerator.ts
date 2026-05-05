@@ -57,7 +57,7 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
     if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
       recapText += `▫️ ${getCategoryLabel(catKey)}\n`;
       groupedItems[catKey].forEach(item => {
-        recapText += `➖ ${item.title_for_list} (${item.source_link})\n`;
+        recapText += `➖ <a href="${item.source_link}">${item.title_for_list}</a>\n`;
       });
       recapText += '\n';
     }
@@ -65,8 +65,8 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
 
   // Add footer
   recapText += `🔗 PREVIOUS LIST\n`;
-  recapText += `📱 DISCUSSION GRUB (https://t.me/+n2dN5qK7RqlhYzk1)\n`;
-  recapText += `📱 TWITTER (https://x.com/TomketLovers)\n`;
+  recapText += `📱 <a href="https://t.me/+n2dN5qK7RqlhYzk1">DISCUSSION GRUB</a>\n`;
+  recapText += `📱 <a href="https://x.com/TomketLovers">TWITTER</a>\n`;
 
   return recapText;
 };
