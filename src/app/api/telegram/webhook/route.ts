@@ -177,6 +177,28 @@ export async function POST(req: NextRequest) {
              await sendMessage(chatId, msg);
           }
         }
+        else if (data === 'send_to_channel') {
+          const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;
+          const imageUrl = process.env.RECAP_IMAGE_URL;
+          const text = callbackQuery.message.text || callbackQuery.message.caption || '';
+          
+          if (!channelId) {
+            await sendMessage(chatId, '❌ Gagal: TELEGRAM_RECAP_CHANNEL_ID belum dikonfigurasi.');
+            return;
+          }
+
+          if (imageUrl) {
+            if (text.length > 1000) {
+              await sendPhoto(channelId, imageUrl);
+              await sendMessage(channelId, text);
+            } else {
+              await sendPhoto(channelId, imageUrl, text);
+            }
+          } else {
+            await sendMessage(channelId, text);
+          }
+          await sendMessage(chatId, '✅ <b>Berhasil!</b> Rekap sudah dikirim ke channel.');
+        }
         else if (data.startsWith('gen_recap_')) {
           // gen_recap_2026-05-01_2026-05-05
           const parts = data.split('_');
