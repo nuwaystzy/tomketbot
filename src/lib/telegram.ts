@@ -18,19 +18,17 @@ export const getAdminIds = (): string[] => TELEGRAM_ADMIN_IDS;
  */
 export const fetchTelegramMessageDate = async (sourceLink: string): Promise<Date | null> => {
   try {
-    // Parse t.me/username/messageId or t.me/c/chatId/messageId
     const match = sourceLink.match(/t\.me\/(?:c\/(\d+)|([^/]+))\/(\d+)/);
     if (!match) return null;
 
-    const privateChatId = match[1]; // for private channels: t.me/c/123/456
-    const username = match[2];       // for public channels: t.me/channel/456
+    const privateChatId = match[1];
+    const username = match[2];
     const messageId = parseInt(match[3]);
 
     const fromChatId = privateChatId ? `-100${privateChatId}` : `@${username}`;
     const adminId = TELEGRAM_ADMIN_IDS[0];
     if (!adminId) return null;
 
-    // Forward silently to first admin DM
     const fwdRes = await fetch(`${TELEGRAM_API_URL}/forwardMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -45,12 +43,10 @@ export const fetchTelegramMessageDate = async (sourceLink: string): Promise<Date
     const fwdData = await fwdRes.json();
     if (!fwdData.ok || !fwdData.result) return null;
 
-    // forward_date = original post date (Unix timestamp)
     const originalDate = fwdData.result.forward_date
       ? new Date(fwdData.result.forward_date * 1000)
       : new Date(fwdData.result.date * 1000);
 
-    // Delete the forwarded message immediately to keep DM clean
     await fetch(`${TELEGRAM_API_URL}/deleteMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -71,9 +67,7 @@ export const sendMessage = async (chatId: string | number, text: string, options
   try {
     const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
         text,
@@ -95,22 +89,11 @@ export const sendMessage = async (chatId: string | number, text: string, options
   }
 };
 
-export const broadcastToAdmins = async (text: string) => {
-  const admins = getAdminIds();
-  for (const adminId of admins) {
-    if (adminId) {
-      await sendMessage(adminId, text);
-    }
-  }
-};
-
 export const answerCallbackQuery = async (callbackQueryId: string, text?: string) => {
   try {
     await fetch(`${TELEGRAM_API_URL}/answerCallbackQuery`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         callback_query_id: callbackQueryId,
         text,
@@ -125,9 +108,7 @@ export const editMessageText = async (chatId: string | number, messageId: number
   try {
     await fetch(`${TELEGRAM_API_URL}/editMessageText`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
         message_id: messageId,
@@ -142,11 +123,16 @@ export const editMessageText = async (chatId: string | number, messageId: number
   }
 };
 
-const getConfidenceLabel = (conf: number | null): string => {
-  if (conf === null) return 'Unknown';
-  if (conf >= 0.85) return '🟢 High';
-  if (conf >= 0.60) return '🟡 Medium';
-  return '🔴 Low';
+export const deleteMessage = async (chatId: string | number, messageId: number) => {
+  try {
+    await fetch(`${TELEGRAM_API_URL}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+    });
+  } catch (e) {
+    console.error('[deleteMessage] failed:', e);
+  }
 };
 
 export const getCategoryKeyboard = (itemId: string | number) => {
@@ -166,9 +152,7 @@ export const getCategoryKeyboard = (itemId: string | number) => {
 
 export const sendAdminItemPreview = async (item: DatabaseParsedItem, targetChatId?: number, editMessageId?: number) => {
   const confPercent = item.confidence ? Math.round(item.confidence * 100) : 0;
-  const confLabel = getConfidenceLabel(item.confidence);
-
-  // Show original text preview when project name is Unknown or AI failed
+  
   const showOriginalPreview = !item.project_name || item.project_name === 'Unknown' || item.project_name.includes('Perlu Review');
   const originalPreview = showOriginalPreview && item.original_text
     ? `\n<b>Teks Asli:</b> <i>${(item.original_text || '').substring(0, 250)}...</i>` 
@@ -180,8 +164,7 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
 <b>Kategori:</b> ${item.category}
 <b>Project:</b> ${item.project_name || '❓ Tidak Terdeteksi'}
 <b>Source:</b> ${item.source_link}
-<b>Confidence:</b> ${confPercent}% (${confLabel})
-<b>Reason:</b> ${item.reason || 'N/A'}
+<b>Confidence:</b> ${confPercent}%
 <b>Summary:</b> ${item.summary || 'N/A'}
 <b>Action:</b> ${item.action || 'N/A'}${originalPreview}
 
@@ -212,21 +195,18 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
       return await sendMessage(targetChatId, text, { reply_markup: inlineKeyboard });
     }
   } else {
-    // Broadcast
     const admins = getAdminIds();
-    for (const adminId of admins) {
-      if (adminId) {
-        await sendMessage(adminId, text, { reply_markup: inlineKeyboard });
-      }
-    }
+    await Promise.all(admins.map(adminId => {
+      if (adminId) return sendMessage(adminId, text, { reply_markup: inlineKeyboard });
+      return Promise.resolve();
+    }));
   }
 };
 
 export const sendAdminRecapDraft = async (text: string) => {
   const admins = getAdminIds();
-  for (const adminId of admins) {
-    if (adminId) {
-      await sendMessage(adminId, text);
-    }
-  }
+  await Promise.all(admins.map(adminId => {
+    if (adminId) return sendMessage(adminId, text);
+    return Promise.resolve();
+  }));
 };
