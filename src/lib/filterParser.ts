@@ -172,6 +172,14 @@ ${text}`;
         finalCategory = 'UPDATE';
       }
 
+      // AUTO-APPROVE LOGIC:
+      // If confidence >= 0.85 and has a valid project name, approve automatically
+      const confidence = item.confidence || 0;
+      const hasValidName = item.project_name && item.project_name !== 'Unknown';
+      const isHighlyConfident = confidence >= 0.85 && hasValidName;
+      const status = isHighlyConfident ? 'approved' : 'pending';
+      const autoInfo = isHighlyConfident ? ' [AUTO-APPROVED]' : '';
+
       itemsToSave.push({
         source_channel: channelUsername || chatId.toString(),
         message_id: messageId,
@@ -182,9 +190,9 @@ ${text}`;
         title_for_list: item.title_for_list || (forceValid ? 'Update' : 'Unknown'),
         summary: item.summary,
         action: item.action,
-        confidence: item.confidence,
-        status: 'pending',
-        reason: forceValid && !item.reason ? 'Forced by #update/#info tag' : item.reason,
+        confidence: confidence,
+        status: status,
+        reason: (forceValid && !item.reason ? 'Forced by #update/#info tag' : item.reason) + autoInfo,
         raw_ai_response: rawResponse,
         ai_model: model,
         ai_error: null,
