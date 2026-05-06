@@ -32,6 +32,7 @@ const isPotentiallyActionable = (text: string): boolean => {
     'new', 'join', 'claim', 'mint', 'testnet', 'waitlist', 'node', 'airdrop', 'task',
     'point', 'register', 'submit', 'faucet', 'update', 'launch', 'live', 'open', 'now',
     'reward', 'eligible', 'snapshot', 'allocation', 'phase', 'season', 'check',
+    'quiz', 'form', 'answer',
     // Indonesian
     'daftar', 'cek', 'klaim', 'hadiah', 'gratis', 'bergabung', 'ayo', 'ikut', 'migrasi',
     'alokasi', 'snapshot', 'eligibel', 'mainnet', 'airdrop'
@@ -123,8 +124,9 @@ ${text}`;
     // REGEX FALLBACK: If Gemini fails, try to parse manually
     const u = text.toUpperCase();
     const hasLink = text.includes('http') || (message.entities && message.entities.some((e: any) => e.type === 'url' || e.type === 'text_link'));
+    const isKeywordRich = ['AIRDROP', 'WL ', 'WAITLIST', 'TESTNET', 'CLAIM', 'UPDATE', 'QUIZ', 'FORM'].some(k => u.includes(k));
     
-    if (hasLink) {
+    if (hasLink || isKeywordRich) {
       console.log(`[FILTER] Gemini failed, using Regex Fallback for msg_id=${messageId}`);
       const urlMatch = text.match(/https?:\/\/[^\s]+/);
       const url = urlMatch ? urlMatch[0] : sourceLink;
@@ -147,6 +149,7 @@ ${text}`;
       else if (u.includes('CLAIM') || u.includes('CHECK')) cat = 'CLAIM_CHECK_ELIGIBLE';
       else if (u.includes('NODE')) cat = 'NODE';
       else if (u.includes('UPDATE') || u.includes('INFO') || u.includes('MIGRATION')) cat = 'UPDATE';
+      else if (u.includes('QUIZ') || u.includes('ANSWER') || u.includes('FORM')) cat = 'AIRDROP';
 
       itemsToSave.push({
         source_channel: channelUsername || chatId.toString(),

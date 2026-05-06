@@ -1,7 +1,7 @@
 import { GeminiResponse } from '@/types';
 
 const GEMINI_API_KEYS = (process.env.GEMINI_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
+const GEMINI_MODEL = 'gemini-1.5-pro';
 
 let currentKeyIndex = 0;
 
