@@ -349,12 +349,19 @@ export async function POST(req: NextRequest) {
         else if (data.startsWith('del_week_item_')) {
           const itemId = data.replace('del_week_item_', '');
           const { data: item } = await supabaseAdmin.from('parsed_items').select('title_for_list, display_id').eq('id', itemId).single();
-          // Mark as shared so it won't appear in /week anymore (soft exclude)
-          // Per spec: just exclude from current session. We do a "soft skip" by flagging weekly_shared=true without a batch
-          // Actually spec says: don't delete, keep weekly_shared=false. So we just send a message.
-          // The item will still show up next /week. Admin can use /week_reset to manage.
-          // For true exclusion from THIS session only, admin should use /week_reset AFTER sharing.
-          await sendMessage(chatId, `ℹ️ Item <b>${item?.title_for_list || itemId}</b> (ID: ${item?.display_id}) dikeluarkan dari daftar preview ini.\n\nJika sudah dikirim ke channel, gunakan /week_reset ${item?.display_id} untuk memindahkannya kembali.`);
+          
+          if (item) {
+            // Actually update DB so it disappears from /week
+            await supabaseAdmin.from('parsed_items')
+              .update({ 
+                weekly_shared: true, 
+                weekly_shared_at: new Date().toISOString(),
+                weekly_batch_id: 'SKIPPED' 
+              })
+              .eq('id', itemId);
+
+            await sendMessage(chatId, `✅ Item <b>${item.title_for_list}</b> (ID: ${item.display_id}) berhasil dikeluarkan dari daftar weekly.\n\nGunakan <code>/week_reset ${item.display_id}</code> jika ingin memasukkannya kembali nanti.`);
+          }
         }
       } else {
          await answerCallbackQuery(callbackQueryId, 'Unauthorized');
