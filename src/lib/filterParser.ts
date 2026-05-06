@@ -144,9 +144,13 @@ ${text}`;
         .trim() || 'New Project';
       
       let cat = 'AIRDROP';
-      if (u.includes('WAITLIST') || u.includes('WL ')) cat = 'WL_EARLY_ACCESS';
+      const firstLineU = firstLine.toUpperCase();
+      
+      // If the title explicitly says UPDATE, prioritize it
+      if (firstLineU.includes('UPDATE')) cat = 'UPDATE';
+      else if (u.includes('WAITLIST') || u.includes('WL ')) cat = 'WL_EARLY_ACCESS';
+      else if (u.includes('CLAIM') || u.includes('CHECK ELIGIBLE')) cat = 'CLAIM_CHECK_ELIGIBLE';
       else if (u.includes('TESTNET') || u.includes('FAUCET')) cat = 'TESTNET';
-      else if (u.includes('CLAIM') || u.includes('CHECK')) cat = 'CLAIM_CHECK_ELIGIBLE';
       else if (u.includes('NODE')) cat = 'NODE';
       else if (u.includes('UPDATE') || u.includes('INFO') || u.includes('MIGRATION')) cat = 'UPDATE';
       else if (u.includes('QUIZ') || u.includes('ANSWER') || u.includes('FORM')) cat = 'AIRDROP';

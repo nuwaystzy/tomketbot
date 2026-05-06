@@ -39,6 +39,7 @@ EXTRACTION RULES:
 6. reason: Why did you classify it this way?
 
 IMPORTANT:
+- If the text explicitly announces an "Update" (e.g., "ProjectName Update") regarding rules, limits, or ongoing tasks, categorize as UPDATE.
 - Posts about allocation results, snapshots, launch dates ARE valid (category: CLAIM_CHECK_ELIGIBLE or UPDATE).
 - Posts in Indonesian should be understood the same as English.
 - "Cek alokasi" = "Check allocation" = valid CLAIM_CHECK_ELIGIBLE.
