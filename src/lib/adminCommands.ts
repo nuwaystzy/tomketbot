@@ -143,14 +143,19 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       
       const todayItems = data || [];
       
+      const { count: allPending } = await supabaseAdmin
+        .from('parsed_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
       const msg = `📊 <b>System Status</b>\n\n` +
       `<b>Today:</b>\n` +
       `- Detected: ${todayItems.length}\n` +
-      `- Pending: ${todayItems.filter(i => i.status === 'pending').length}\n` +
-      `- Approved: ${todayItems.filter(i => i.status === 'approved').length}\n` +
-      `- Skipped: ${todayItems.filter(i => i.status === 'skipped').length}\n\n` +
+      `- Pending: ${todayItems.filter((i: any) => i.status === 'pending').length}\n` +
+      `- Approved: ${todayItems.filter((i: any) => i.status === 'approved').length}\n` +
+      `- Skipped: ${todayItems.filter((i: any) => i.status === 'skipped').length}\n\n` +
       `<b>All Time:</b>\n` +
-      `- Total Pending: ${items.filter(i => i.status === 'pending').length}\n`;
+      `- Total Pending: ${allPending || 0}\n`;
       
       const inlineKeyboard = {
         inline_keyboard: [
