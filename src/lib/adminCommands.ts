@@ -73,6 +73,56 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       await supabaseAdmin.from('admin_sessions').upsert({ admin_id: userId, flow: 'recap', step: 'start_date', payload: {} });
       await sendMessage(chatId, `📅 <b>Custom Recap Generator</b>\n\nSilakan ketik tanggal AWAL rekap (Format YYYY-MM-DD).\nContoh: <code>2026-05-01</code>`, { parse_mode: 'HTML' });
     }
+    else if (command === '/today') {
+      const getJakartaDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d);
+      const now = new Date();
+      const todayStr = getJakartaDate(now);
+
+      const queryStart = `${todayStr}T00:00:00+07:00`;
+      const queryEnd   = `${todayStr}T23:59:59+07:00`;
+
+      const { data, error } = await supabaseAdmin
+        .from('parsed_items')
+        .select('*')
+        .eq('status', 'approved')
+        .gte('telegram_post_date', queryStart)
+        .lte('telegram_post_date', queryEnd)
+        .order('telegram_post_date', { ascending: true });
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        await sendMessage(chatId, '✅ Tidak ada item yang disetujui untuk hari ini.');
+        return;
+      }
+
+      const grouped: Record<string, any[]> = {};
+      data.forEach((item: any) => {
+        if (!grouped[item.category]) grouped[item.category] = [];
+        grouped[item.category].push(item);
+      });
+
+      let msg = `✅ <b>Item Disetujui (/today):</b>\n\n`;
+      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as any))];
+      for (const catKey of allCats) {
+        if (grouped[catKey] && grouped[catKey].length > 0) {
+          msg += `<b>${getCategoryLabel(catKey)}</b>\n`;
+          grouped[catKey].forEach((item: any) => {
+            const id = item.display_id || item.id;
+            msg += `• ${item.title_for_list} <b>[ID:${id}]</b>\n`;
+          });
+          msg += '\n';
+        }
+      }
+
+      const inlineKeyboard = {
+        inline_keyboard: [
+          [{ text: '📝 Buat Rekap Final (/today)', callback_data: `gen_recap_${todayStr}_${todayStr}` }],
+          [{ text: '🗑️ Hapus Item dari Daftar', callback_data: `del_mode_${todayStr}_${todayStr}` }]
+        ]
+      };
+
+      await sendMessage(chatId, msg, { reply_markup: inlineKeyboard });
+    }
     else if (command === '/week') {
       // Status-based weekly: all approved items not yet shared to channel
       const { data, error } = await supabaseAdmin
