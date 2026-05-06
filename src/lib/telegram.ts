@@ -258,8 +258,15 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
 export const sendAdminRecapDraft = async (text: string, start: string, end: string) => {
   const admins = getAdminIds();
   const imageUrl = process.env.RECAP_IMAGE_URL;
+
+  // Detect if this is a weekly status-based recap or a date-based recap
+  const isWeeklyMode = start === 'week_unshared';
+  const sendCallbackData = isWeeklyMode
+    ? 'send_week_unshared'
+    : `send_channel_${start}_${end}`;
+
   const kb = {
-    inline_keyboard: [[{ text: '🚀 Kirim ke Channel', callback_data: `send_channel_${start}_${end}` }]]
+    inline_keyboard: [[{ text: '🚀 Kirim ke Channel', callback_data: sendCallbackData }]]
   };
 
   await Promise.all(admins.map(async (adminId) => {

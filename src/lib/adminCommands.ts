@@ -1,8 +1,8 @@
 import { supabaseAdmin } from './supabaseAdmin';
 import { sendMessage, sendAdminRecapDraft, sendAdminItemPreview, getCategoryKeyboard, fetchTelegramMessageDate } from './telegram';
-import { generateRecapDraft } from './recapGenerator';
+import { generateRecapDraft, generateWeeklyUnsharedDraft } from './recapGenerator';
 import { DatabaseParsedItem } from '@/types';
-import { resolveCategoryAlias, CATEGORY_KEYS } from './categories';
+import { resolveCategoryAlias, CATEGORY_KEYS, getCategoryLabel } from './categories';
 
 export const logAction = async (adminId: number, actionType: string, itemId: string, prevState: any, newState: any) => {
   await supabaseAdmin.from('action_logs').insert({
@@ -73,54 +73,33 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       await supabaseAdmin.from('admin_sessions').upsert({ admin_id: userId, flow: 'recap', step: 'start_date', payload: {} });
       await sendMessage(chatId, `📅 <b>Custom Recap Generator</b>\n\nSilakan ketik tanggal AWAL rekap (Format YYYY-MM-DD).\nContoh: <code>2026-05-01</code>`, { parse_mode: 'HTML' });
     }
-    else if (command === '/today' || command === '/week') {
-      const isWeek = command === '/week';
-      
-      const getJakartaDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d);
-      const now = new Date();
-      const endDateStr = getJakartaDate(now);
-      
-      let startDateStr: string;
-      if (isWeek) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - 6);
-        startDateStr = getJakartaDate(d);
-      } else {
-        startDateStr = endDateStr;
-      }
-
-      // TIMESTAMPTZ boundaries for WIB (+07:00)
-      const queryStart = `${startDateStr}T00:00:00+07:00`;
-      const queryEnd = `${endDateStr}T23:59:59+07:00`;
-
+    else if (command === '/week') {
+      // Status-based weekly: all approved items not yet shared to channel
       const { data, error } = await supabaseAdmin
         .from('parsed_items')
         .select('*')
         .eq('status', 'approved')
-        .gte('telegram_post_date', queryStart)
-        .lte('telegram_post_date', queryEnd)
+        .eq('weekly_shared', false)
         .order('telegram_post_date', { ascending: true });
-        
+
       if (error) throw error;
+
       if (!data || data.length === 0) {
-        await sendMessage(chatId, `Tidak ada item yang disetujui untuk ${command}.`);
+        await sendMessage(chatId, '✅ Tidak ada item approved yang belum dishare ke weekly.');
         return;
       }
 
-      // Group by category for preview
-      const { CATEGORY_KEYS, getCategoryLabel } = require('./categories');
       const grouped: Record<string, any[]> = {};
       data.forEach((item: any) => {
         if (!grouped[item.category]) grouped[item.category] = [];
         grouped[item.category].push(item);
       });
 
-      let msg = `✅ <b>Item Disetujui (${command}):</b>\n\n`;
-      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c))];
-      
+      let msg = `✅ <b>Item Siap Direkap Weekly:</b>\n\n`;
+      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as any))];
       for (const catKey of allCats) {
         if (grouped[catKey] && grouped[catKey].length > 0) {
-          const label = getCategoryLabel ? getCategoryLabel(catKey) : catKey;
+          const label = getCategoryLabel(catKey);
           msg += `<b>${label}</b>\n`;
           grouped[catKey].forEach((item: any) => {
             const id = item.display_id || item.id;
@@ -129,21 +108,103 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
           msg += '\n';
         }
       }
+      msg += `Total: <b>${data.length} item</b> belum dishare`;
 
-      // Compute actual date range from items
-      const dates = data.map((i: any) => i.telegram_post_date ? getJakartaDate(new Date(i.telegram_post_date)) : null).filter(Boolean).sort();
-      const actualStart = dates[0] || startDateStr;
-      const actualEnd = dates[dates.length - 1] || endDateStr;
-      
       const inlineKeyboard = {
         inline_keyboard: [
-          [{ text: `📝 Buat Rekap Final (${command})`, callback_data: `gen_recap_${actualStart}_${actualEnd}` }],
-          [{ text: `🗑️ Hapus Item dari Daftar`, callback_data: `del_mode_${startDateStr}_${endDateStr}` }]
+          [{ text: '📝 Buat Rekap Final (/week)', callback_data: 'gen_week_unshared' }],
+          [{ text: '🗑️ Hapus Item dari Daftar', callback_data: 'del_week_mode' }]
         ]
       };
-      
 
       await sendMessage(chatId, msg, { reply_markup: inlineKeyboard });
+    }
+    else if (command === '/week_unsent') {
+      // Alias for /week preview without generate button
+      const { data, error } = await supabaseAdmin
+        .from('parsed_items')
+        .select('*')
+        .eq('status', 'approved')
+        .eq('weekly_shared', false)
+        .order('telegram_post_date', { ascending: true });
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        await sendMessage(chatId, '✅ Tidak ada item weekly yang belum dishare.');
+        return;
+      }
+
+      const grouped: Record<string, any[]> = {};
+      data.forEach((item: any) => {
+        if (!grouped[item.category]) grouped[item.category] = [];
+        grouped[item.category].push(item);
+      });
+
+      let msg = `📋 <b>Item Belum Dishare ke Weekly:</b>\n\n`;
+      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as any))];
+      for (const catKey of allCats) {
+        if (grouped[catKey] && grouped[catKey].length > 0) {
+          msg += `<b>${getCategoryLabel(catKey)}</b>\n`;
+          grouped[catKey].forEach((item: any) => {
+            const id = item.display_id || item.id;
+            msg += `• ${item.title_for_list} <b>[ID:${id}]</b>\n`;
+          });
+          msg += '\n';
+        }
+      }
+      msg += `Total: <b>${data.length} item</b>`;
+      await sendMessage(chatId, msg);
+    }
+    else if (command === '/week_history') {
+      const { data, error } = await supabaseAdmin
+        .from('weekly_recaps')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        await sendMessage(chatId, '📦 Belum ada riwayat rekap weekly.');
+        return;
+      }
+
+      let msg = '📦 <b>Riwayat Rekap Weekly</b>\n\n';
+      data.forEach((recap: any, i: number) => {
+        const dt = new Date(recap.created_at);
+        const dateStr = dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+        const timeStr = dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+        msg += `${i + 1}. <b>${recap.batch_id}</b>\n`;
+        msg += `   Total: ${recap.total_items} item\n`;
+        msg += `   Shared at: ${dateStr}, ${timeStr}\n`;
+        if (recap.message_id) msg += `   Channel Message ID: ${recap.message_id}\n`;
+        msg += '\n';
+      });
+      await sendMessage(chatId, msg);
+    }
+    else if (command === '/week_reset') {
+      const targetId = parts[1];
+      if (!targetId) {
+        await sendMessage(chatId, 'Usage: /week_reset <item_id>');
+        return;
+      }
+      // Find by display_id
+      const { data, error } = await supabaseAdmin
+        .from('parsed_items')
+        .select('id, title_for_list, display_id')
+        .eq('display_id', parseInt(targetId))
+        .single();
+
+      if (error || !data) {
+        await sendMessage(chatId, `❌ Item dengan ID ${targetId} tidak ditemukan.`);
+        return;
+      }
+
+      await supabaseAdmin
+        .from('parsed_items')
+        .update({ weekly_shared: false, weekly_shared_at: null, weekly_batch_id: null })
+        .eq('id', data.id);
+
+      await sendMessage(chatId, `✅ Item ID ${targetId} (<b>${data.title_for_list}</b>) berhasil dikembalikan ke daftar weekly belum dishare.`);
     }
     else if (command === '/status') {
       const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());

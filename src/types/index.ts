@@ -82,6 +82,9 @@ export interface DatabaseParsedItem {
   raw_update?: any;
   telegram_post_date?: string;
   date_found?: string;
+  weekly_shared?: boolean;
+  weekly_shared_at?: string | null;
+  weekly_batch_id?: string | null;
 }
 
 export interface AdminSession {
@@ -98,4 +101,14 @@ export interface ActionLog {
   target_item_id: string;
   previous_state: any;
   new_state: any;
+}
+
+export interface WeeklyRecap {
+  id?: string;
+  batch_id: string;
+  channel_id?: string;
+  message_id?: string;
+  total_items: number;
+  item_ids: string[];
+  created_at?: string;
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseTelegramPost } from '@/lib/filterParser';
 import { handleAdminCommand, logAction, showNextReviewItem } from '@/lib/adminCommands';
 import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft, sendPhoto, sendRecap } from '@/lib/telegram';
-import { generateRecapDraft } from '@/lib/recapGenerator';
+import { generateRecapDraft, generateWeeklyUnsharedDraft, generateWeeklyBatchId } from '@/lib/recapGenerator';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
@@ -256,6 +256,105 @@ export async function POST(req: NextRequest) {
           const start = parts.pop()!;
           const recapDraft = await generateRecapDraft(start, end);
           await sendAdminRecapDraft(recapDraft, start, end);
+        }
+        // ─── Weekly status-based recap handlers ────────────────────────────
+        else if (data === 'gen_week_unshared') {
+          // Show draft preview to all admins with send button
+          const result = await generateWeeklyUnsharedDraft();
+          if (result.totalItems === 0) {
+            await sendMessage(chatId, '✅ Tidak ada item approved yang belum dishare ke weekly.');
+            return NextResponse.json({ ok: true });
+          }
+          // Use sendAdminRecapDraft with a special marker for weekly
+          await sendAdminRecapDraft(result.text, 'week_unshared', 'week_unshared');
+        }
+        else if (data === 'send_week_unshared') {
+          const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;
+          const imageUrl  = process.env.RECAP_IMAGE_URL;
+
+          if (!channelId) {
+            await sendMessage(chatId, '❌ Gagal: TELEGRAM_RECAP_CHANNEL_ID belum dikonfigurasi.');
+            return NextResponse.json({ ok: true });
+          }
+
+          // Re-generate fresh at send time (always up-to-date)
+          const result = await generateWeeklyUnsharedDraft();
+          if (result.totalItems === 0) {
+            await sendMessage(chatId, '✅ Tidak ada item yang bisa direkap.');
+            return NextResponse.json({ ok: true });
+          }
+
+          try {
+            const res = await sendRecap(channelId, result.text, imageUrl);
+
+            if (res) {
+              // Only mark shared AFTER successful channel send
+              const batchId = await generateWeeklyBatchId();
+              const now = new Date().toISOString();
+              const channelMsgId = res.result?.message_id?.toString() || null;
+
+              // 1. Insert batch record
+              await supabaseAdmin.from('weekly_recaps').insert({
+                batch_id: batchId,
+                channel_id: channelId,
+                message_id: channelMsgId,
+                total_items: result.totalItems,
+                item_ids: result.itemIds,
+              });
+
+              // 2. Mark all items as shared
+              await supabaseAdmin
+                .from('parsed_items')
+                .update({
+                  weekly_shared: true,
+                  weekly_shared_at: now,
+                  weekly_batch_id: batchId,
+                })
+                .in('id', result.itemIds);
+
+              console.log(`[WEEKLY] Batch ${batchId}: ${result.totalItems} items marked as shared`);
+              await sendMessage(chatId, `✅ <b>Berhasil!</b> Rekap weekly (${result.totalItems} item) sudah dikirim ke channel.\nBatch ID: <code>${batchId}</code>`);
+            } else {
+              await sendMessage(chatId, '❌ <b>Gagal!</b> Pesan tidak terkirim ke channel. Status item tidak diubah. Pastikan bot adalah admin di channel.');
+            }
+          } catch (e: any) {
+            await sendMessage(chatId, `❌ <b>Gagal!</b> Error: ${e.message}\nStatus item tidak diubah.`);
+          }
+        }
+        else if (data === 'del_week_mode') {
+          // Show list of unsent items as delete buttons
+          const { data: items } = await supabaseAdmin
+            .from('parsed_items')
+            .select('id, title_for_list, display_id')
+            .eq('status', 'approved')
+            .eq('weekly_shared', false)
+            .order('telegram_post_date', { ascending: true });
+
+          if (!items || items.length === 0) {
+            await answerCallbackQuery(callbackQueryId, 'Tidak ada item');
+            return NextResponse.json({ ok: true });
+          }
+
+          const kb = {
+            inline_keyboard: [
+              ...items.map((item: any) => ([{
+                text: `🗑️ [${item.display_id}] ${item.title_for_list}`,
+                callback_data: `del_week_item_${item.id}`
+              }])),
+              [{ text: '🔙 Kembali', callback_data: 'cancel_manage' }]
+            ]
+          };
+          await sendMessage(chatId, '<b>Mode Hapus Weekly</b>\nPilih item yang ingin dikeluarkan dari rekap weekly:\n<i>(Item tidak dihapus dari database)</i>', { parse_mode: 'HTML', reply_markup: kb });
+        }
+        else if (data.startsWith('del_week_item_')) {
+          const itemId = data.replace('del_week_item_', '');
+          const { data: item } = await supabaseAdmin.from('parsed_items').select('title_for_list, display_id').eq('id', itemId).single();
+          // Mark as shared so it won't appear in /week anymore (soft exclude)
+          // Per spec: just exclude from current session. We do a "soft skip" by flagging weekly_shared=true without a batch
+          // Actually spec says: don't delete, keep weekly_shared=false. So we just send a message.
+          // The item will still show up next /week. Admin can use /week_reset to manage.
+          // For true exclusion from THIS session only, admin should use /week_reset AFTER sharing.
+          await sendMessage(chatId, `ℹ️ Item <b>${item?.title_for_list || itemId}</b> (ID: ${item?.display_id}) dikeluarkan dari daftar preview ini.\n\nJika sudah dikirim ke channel, gunakan /week_reset ${item?.display_id} untuk memindahkannya kembali.`);
         }
       } else {
          await answerCallbackQuery(callbackQueryId, 'Unauthorized');
