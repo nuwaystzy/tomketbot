@@ -59,17 +59,17 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
     else if (command === '/today' || command === '/week') {
       const isWeek = command === '/week';
       
+      const getJakartaDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d);
+      
       const now = new Date();
-      // Use WIB (UTC+7) for date calculation
-      const todayWIB = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      const endDateStr = todayWIB.toISOString().split('T')[0];
+      const endDateStr = getJakartaDate(now);
       
       let startDateStr: string;
       if (isWeek) {
-        // Last 7 days (more useful than Mon-Sun calendar week)
-        const d = new Date(todayWIB);
-        d.setUTCDate(d.getUTCDate() - 6); // 6 days back = 7 days total including today
-        startDateStr = d.toISOString().split('T')[0];
+        const d = new Date(now);
+        // We need to calculate 6 days ago in Jakarta time
+        d.setDate(d.getDate() - 6);
+        startDateStr = getJakartaDate(d);
       } else {
         startDateStr = endDateStr;
       }

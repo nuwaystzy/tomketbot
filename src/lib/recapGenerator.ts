@@ -12,8 +12,8 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
     .from('parsed_items')
     .select('*')
     .eq('status', 'approved')
-    .gte('telegram_post_date', `${startDateStr}T00:00:00.000Z`)
-    .lte('telegram_post_date', endDateTime)
+    .gte('telegram_post_date', startDateStr)
+    .lte('telegram_post_date', endDateStr)
     .order('telegram_post_date', { ascending: true });
 
   if (error) {
