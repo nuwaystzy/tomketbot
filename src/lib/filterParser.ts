@@ -77,7 +77,7 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
   }
 
   const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `DM`;
-  const telegramPostDate = new Date(message.date * 1000).toISOString();
+  const telegramPostDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date(message.date * 1000));
 
   // 1. Rule-based prefilter
   if (!isPotentiallyActionable(text)) {
@@ -116,27 +116,63 @@ ${text}`;
   let itemsToSave: DatabaseParsedItem[] = [];
 
   if (error || !data || !data.items || data.items.length === 0) {
-    // Gemini failed - save as pending so admin can review manually
-    console.log(`[FILTER] Gemini failed for msg_id=${messageId}: ${error}`);
-    itemsToSave.push({
-      source_channel: channelUsername || chatId.toString(),
-      message_id: messageId,
-      source_link: sourceLink,
-      original_text: text,
-      category: 'PENDING_REVIEW',
-      project_name: '⚠️ Perlu Review Manual',
-      title_for_list: '⚠️ Perlu Review Manual',
-      summary: `Teks asli: ${text.substring(0, 200)}`,
-      action: null,
-      confidence: 0,
-      status: 'pending',
-      reason: error ? `AI Error: ${error.substring(0, 200)}` : 'AI tidak memberi respons valid',
-      raw_ai_response: rawResponse,
-      ai_model: model,
-      ai_error: error,
-      raw_update: update,
-      telegram_post_date: telegramPostDate
-    });
+    // REGEX FALLBACK: If Gemini fails, try to parse manually
+    const u = text.toUpperCase();
+    const urlMatch = text.match(/https?:\/\/[^\s]+/);
+    
+    if (urlMatch) {
+      console.log(`[FILTER] Gemini failed, using Regex Fallback for msg_id=${messageId}`);
+      const url = urlMatch[0];
+      const lines = text.split('\n').filter(l => l.trim().length > 0);
+      const name = lines[0].substring(0, 30).trim() || 'Project';
+      
+      let cat = 'AIRDROP';
+      if (u.includes('WAITLIST') || u.includes('WL ')) cat = 'WL_EARLY_ACCESS';
+      else if (u.includes('TESTNET') || u.includes('FAUCET')) cat = 'TESTNET';
+      else if (u.includes('CLAIM') || u.includes('CHECK')) cat = 'CLAIM_CHECK_ELIGIBLE';
+      else if (u.includes('NODE')) cat = 'NODE';
+      else if (u.includes('UPDATE') || u.includes('INFO') || u.includes('MIGRATION')) cat = 'UPDATE';
+
+      itemsToSave.push({
+        source_channel: channelUsername || chatId.toString(),
+        message_id: messageId,
+        source_link: sourceLink,
+        original_text: text,
+        category: cat as any,
+        project_name: name,
+        title_for_list: name,
+        summary: text.substring(0, 150).replace(/\n/g, ' '),
+        action: `Visit ${url}`,
+        confidence: 0.86,
+        status: 'approved', // AUTO-APPROVE if URL found
+        reason: 'Auto-detected via Regex Fallback',
+        raw_ai_response: rawResponse,
+        ai_model: 'regex-fallback',
+        raw_update: update,
+        telegram_post_date: telegramPostDate
+      });
+    } else {
+      // Final fallback to manual review
+      itemsToSave.push({
+        source_channel: channelUsername || chatId.toString(),
+        message_id: messageId,
+        source_link: sourceLink,
+        original_text: text,
+        category: 'PENDING_REVIEW',
+        project_name: '⚠️ Perlu Review Manual',
+        title_for_list: '⚠️ Perlu Review Manual',
+        summary: `Teks asli: ${text.substring(0, 200)}`,
+        action: null,
+        confidence: 0,
+        status: 'pending',
+        reason: error ? `AI Error: ${error.substring(0, 200)}` : 'AI tidak memberi respons valid',
+        raw_ai_response: rawResponse,
+        ai_model: model,
+        ai_error: error,
+        raw_update: update,
+        telegram_post_date: telegramPostDate
+      });
+    }
   } else {
     data.items.forEach(item => {
       const forceValid = isUpdateTag;
