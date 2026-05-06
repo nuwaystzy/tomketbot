@@ -56,6 +56,23 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       
       await sendMessage(chatId, msg);
     }
+    else if (command === '/testchannel') {
+      const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;
+      if (!channelId) {
+        await sendMessage(chatId, '❌ TELEGRAM_RECAP_CHANNEL_ID belum dikonfigurasi di Vercel.');
+        return;
+      }
+      const res = await sendMessage(channelId, '🔄 <b>Test Message dari Bot</b>\nJika Anda melihat pesan ini, berarti koneksi bot ke channel sudah sukses!', { parse_mode: 'HTML' });
+      if (res) {
+        await sendMessage(chatId, `✅ Test berhasil dikirim ke ID: <code>${channelId}</code>. Silakan cek channel Anda.`);
+      } else {
+        await sendMessage(chatId, `❌ Gagal mengirim ke ID: <code>${channelId}</code>. Pastikan bot adalah admin di channel tersebut dan ID-nya benar (biasanya diawali -100).`);
+      }
+    }
+    else if (command === '/recap') {
+      await supabaseAdmin.from('admin_sessions').upsert({ admin_id: userId, flow: 'recap', step: 'start_date', payload: {} });
+      await sendMessage(chatId, `📅 <b>Custom Recap Generator</b>\n\nSilakan ketik tanggal AWAL rekap (Format YYYY-MM-DD).\nContoh: <code>2026-05-01</code>`, { parse_mode: 'HTML' });
+    }
     else if (command === '/today' || command === '/week') {
       const isWeek = command === '/week';
       
@@ -391,6 +408,45 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
       }
       else {
         await sendMessage(chatId, `Please use the buttons above or type /cancel to abort.`);
+      }
+    }
+    else if (session.flow === 'recap') {
+      const parseInputDate = (str: string): string | null => {
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+          return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d);
+        }
+        const currentYear = new Date().getFullYear();
+        const d2 = new Date(`${str} ${currentYear}`);
+        if (!isNaN(d2.getTime())) {
+          return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d2);
+        }
+        return null;
+      };
+
+      if (session.step === 'start_date') {
+        const startDate = parseInputDate(text.trim());
+        if (!startDate) {
+          await sendMessage(chatId, `❌ Format tanggal tidak dikenali. Coba: <code>2026-05-01</code> atau <code>1 May</code>`, { parse_mode: 'HTML' });
+          return;
+        }
+        await supabaseAdmin.from('admin_sessions').update({ step: 'end_date', payload: { start: startDate } }).eq('admin_id', userId);
+        await sendMessage(chatId, `Mulai dari: <b>${startDate}</b>\n\nSilakan ketik tanggal AKHIR rekap:`, { parse_mode: 'HTML' });
+      }
+      else if (session.step === 'end_date') {
+        const endDate = parseInputDate(text.trim());
+        if (!endDate) {
+          await sendMessage(chatId, `❌ Format tanggal tidak dikenali. Coba: <code>2026-05-06</code> atau <code>6 May</code>`, { parse_mode: 'HTML' });
+          return;
+        }
+        const startDate = session.payload.start;
+        await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
+        
+        await sendMessage(chatId, `⏳ Menggenerate rekap dari ${startDate} sampai ${endDate}...`);
+        
+        // Directly trigger the gen_recap flow logic
+        const recapDraft = await generateRecapDraft(startDate, endDate);
+        await sendAdminRecapDraft(recapDraft, startDate, endDate);
       }
     } else {
       await sendMessage(chatId, `Please use the buttons above or type /cancel to abort.`);
