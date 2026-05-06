@@ -22,7 +22,7 @@ VALID categories (pick one):
 - TESTNET: testing network participation
 - MAINNET: mainnet launch with action required
 - RETROACTIVE: retroactive airdrop for past users
-- AIRDROP_CAMPAIGN: new airdrop, farm, or campaign tasks
+- AIRDROP: new airdrop, farm, or campaign tasks
 - MINING_DEPIN: mining or DePIN project
 - WL_EARLY_ACCESS: Waitlists, registration for early access, allowlists.
 - CLAIM_CHECK_ELIGIBLE: Allocation checkers, claim portals, snapshot results.
