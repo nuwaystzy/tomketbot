@@ -368,7 +368,7 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
 
       const msg = `⚙️ <b>Pengaturan Bot</b>\n\n` +
       `<b>Source Channel:</b> ${process.env.TELEGRAM_SOURCE_CHANNELS}\n` +
-      `<b>Model AI:</b> ${process.env.GEMINI_MODEL}\n` +
+      `<b>Model AI:</b> gemini-1.5-pro\n` +
       `<b>Jumlah Admin:</b> ${(process.env.TELEGRAM_ADMIN_IDS || '').split(',').length}\n` +
       `<b>Total Item di DB:</b> ${totalItems || 0}\n\n` +
       `<b>Kebijakan Retensi Data:</b>\n` +
@@ -396,7 +396,7 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       await sendMessage(chatId, `✅ Undo successful! Item status reverted.`);
     }
     else {
-      await sendMessage(chatId, 'Unknown command. Use /review, /today, /week, /status, /import, /add, /undo, /settings.');
+      await sendMessage(chatId, 'Unknown command. Gunakan: /review, /today, /week, /week_unsent, /week_history, /week_reset, /recap, /status, /pending, /add, /import, /undo, /settings, /testchannel');
     }
   } catch (error: any) {
     console.error('Command Error:', error);
@@ -416,8 +416,6 @@ export const showNextReviewItem = async (chatId: number, editMessageId?: number)
   if (error || !data) {
     const text = '🎉 All pending items reviewed! No pending items left.';
     if (editMessageId) {
-      await sendMessage(chatId, text); // Don't edit into "All done", send a new one so the old card disappears? No, better to edit.
-      // Wait, let's edit the card to say all done.
       const { editMessageText } = require('./telegram');
       await editMessageText(chatId, editMessageId, text);
     } else {
