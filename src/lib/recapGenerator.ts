@@ -8,12 +8,15 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
   
   const endDateTime = `${endDateStr}T23:59:59.999Z`;
   
+  const queryStart = `${startDateStr}T00:00:00+07:00`;
+  const queryEnd = `${endDateStr}T23:59:59+07:00`;
+
   const { data, error } = await supabaseAdmin
     .from('parsed_items')
     .select('*')
     .eq('status', 'approved')
-    .gte('telegram_post_date', startDateStr)
-    .lte('telegram_post_date', endDateStr)
+    .gte('telegram_post_date', queryStart)
+    .lte('telegram_post_date', queryEnd)
     .order('telegram_post_date', { ascending: true });
 
   if (error) {
@@ -28,8 +31,12 @@ export const generateRecapDraft = async (startDateStr: string, endDateStr: strin
   }
 
   // Format the dates - use ACTUAL range of items, not parameter
+  const getJakartaDateString = (isoString: string) => {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date(isoString));
+  };
+  
   const actualDates = items
-    .map(i => i.telegram_post_date?.split('T')[0])
+    .map(i => i.telegram_post_date ? getJakartaDateString(i.telegram_post_date) : null)
     .filter(Boolean)
     .sort() as string[];
   

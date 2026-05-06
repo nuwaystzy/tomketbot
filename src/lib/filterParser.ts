@@ -81,7 +81,7 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
   }
 
   const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `DM`;
-  const telegramPostDate = getJakartaDate(new Date(message.date * 1000));
+  const telegramPostDate = new Date(message.date * 1000).toISOString();
 
   // 1. Rule-based prefilter
   if (!isPotentiallyActionable(text)) {

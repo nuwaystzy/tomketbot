@@ -72,12 +72,16 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
         startDateStr = endDateStr;
       }
 
+      // TIMESTAMPTZ boundaries for WIB (+07:00)
+      const queryStart = `${startDateStr}T00:00:00+07:00`;
+      const queryEnd = `${endDateStr}T23:59:59+07:00`;
+
       const { data, error } = await supabaseAdmin
         .from('parsed_items')
         .select('*')
         .eq('status', 'approved')
-        .gte('telegram_post_date', `${startDateStr}T00:00:00.000Z`)
-        .lte('telegram_post_date', `${endDateStr}T23:59:59.999Z`)
+        .gte('telegram_post_date', queryStart)
+        .lte('telegram_post_date', queryEnd)
         .order('telegram_post_date', { ascending: true });
         
       if (error) throw error;
@@ -110,7 +114,7 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       }
 
       // Compute actual date range from items
-      const dates = data.map((i: any) => i.telegram_post_date?.split('T')[0]).filter(Boolean).sort();
+      const dates = data.map((i: any) => i.telegram_post_date ? getJakartaDate(new Date(i.telegram_post_date)) : null).filter(Boolean).sort();
       const actualStart = dates[0] || startDateStr;
       const actualEnd = dates[dates.length - 1] || endDateStr;
       
@@ -125,12 +129,19 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       await sendMessage(chatId, msg, { reply_markup: inlineKeyboard });
     }
     else if (command === '/status') {
-      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
-      const { data, error } = await supabaseAdmin.from('parsed_items').select('status, telegram_post_date');
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+      const queryStart = `${todayStr}T00:00:00+07:00`;
+      const queryEnd = `${todayStr}T23:59:59+07:00`;
+      
+      const { data, error } = await supabaseAdmin
+        .from('parsed_items')
+        .select('status, telegram_post_date')
+        .gte('telegram_post_date', queryStart)
+        .lte('telegram_post_date', queryEnd);
+      
       if (error) throw error;
       
-      const items = data || [];
-      const todayItems = items.filter(i => i.telegram_post_date === today);
+      const todayItems = data || [];
       
       const msg = `📊 <b>System Status</b>\n\n` +
       `<b>Today:</b>\n` +
