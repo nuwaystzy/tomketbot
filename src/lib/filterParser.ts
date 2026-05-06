@@ -120,6 +120,20 @@ ${text}`;
 
   let itemsToSave: DatabaseParsedItem[] = [];
 
+  const cleanProjectName = (name: string): string => {
+    if (!name) return 'Unknown';
+    // Remove emojis and common symbols using a regex that matches extended pictographic characters
+    let clean = name.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u200D🌟✨🔥🚀⭐👍]/gu, '').trim();
+    // Remove multiple spaces
+    clean = clean.replace(/\s+/g, ' ');
+    // Limit to max 4 words
+    const words = clean.split(' ');
+    if (words.length > 4) {
+      clean = words.slice(0, 4).join(' ');
+    }
+    return clean || 'Unknown';
+  };
+
   if (error || !data || !data.items || data.items.length === 0) {
     // REGEX FALLBACK: If Gemini fails, try to parse manually
     const u = text.toUpperCase();
@@ -143,6 +157,8 @@ ${text}`;
         .replace(/:/g, '')
         .trim() || 'New Project';
       
+      name = cleanProjectName(name);
+
       let cat = 'AIRDROP';
       const firstLineU = firstLine.toUpperCase();
       
@@ -150,6 +166,7 @@ ${text}`;
       if (firstLineU.includes('UPDATE')) cat = 'UPDATE';
       else if (u.includes('WAITLIST') || u.includes('WL ')) cat = 'WL_EARLY_ACCESS';
       else if (u.includes('CLAIM') || u.includes('CHECK ELIGIBLE')) cat = 'CLAIM_CHECK_ELIGIBLE';
+      else if (u.includes('MAINNET')) cat = 'MAINNET';
       else if (u.includes('TESTNET') || u.includes('FAUCET')) cat = 'TESTNET';
       else if (u.includes('NODE')) cat = 'NODE';
       else if (u.includes('UPDATE') || u.includes('INFO') || u.includes('MIGRATION')) cat = 'UPDATE';
@@ -238,14 +255,17 @@ ${text}`;
       const status = isHighlyConfident ? 'approved' : 'pending';
       const autoInfo = isHighlyConfident ? ' [AUTO-APPROVED]' : '';
 
+      const cleanedName = cleanProjectName(item.project_name || (forceValid ? 'Update' : 'Unknown'));
+      const cleanedTitle = cleanProjectName(item.title_for_list || (forceValid ? 'Update' : 'Unknown'));
+
       itemsToSave.push({
         source_channel: channelUsername || chatId.toString(),
         message_id: messageId,
         source_link: sourceLink,
         original_text: text,
         category: finalCategory,
-        project_name: item.project_name || (forceValid ? 'Update' : 'Unknown'),
-        title_for_list: item.title_for_list || (forceValid ? 'Update' : 'Unknown'),
+        project_name: cleanedName,
+        title_for_list: cleanedTitle,
         summary: item.summary,
         action: item.action,
         confidence: confidence,

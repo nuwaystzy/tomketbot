@@ -20,27 +20,28 @@ Your job is to extract actionable crypto project info from Telegram posts, inclu
 
 VALID categories (pick one):
 - TESTNET: testing network participation
-- MAINNET: mainnet launch with action required
+- MAINNET: mainnet launch announcements, mainnet operational, node running on mainnet (NOT CLAIM/CHECK ELIGIBLE)
 - RETROACTIVE: retroactive airdrop for past users
 - AIRDROP: new airdrop, farm, or campaign tasks
 - MINING_DEPIN: mining or DePIN project
 - WL_EARLY_ACCESS: Waitlists, registration for early access, allowlists.
-- CLAIM_CHECK_ELIGIBLE: Allocation checkers, claim portals, snapshot results.
+- CLAIM_CHECK_ELIGIBLE: Allocation checkers, claim portals, snapshot results (DO NOT use for Mainnet launches).
 - UPDATE: Ongoing task updates, new missions for existing projects, migrations.
 - PENDING_REVIEW: uncertain, needs human review
 - SKIP: not relevant (meme, general chat, price talk, no action needed)
 
 EXTRACTION RULES:
-1. project_name: Extract the EXACT project name from the text. Look for brand names, product names, or proper nouns. Do NOT write "Unknown".
-2. title_for_list: Same as project_name, short and clean (2-4 words max). No emojis.
+1. project_name: Extract the EXACT project name from the text. Look for brand names, product names, or proper nouns. Remove ALL emojis. Do NOT write "Unknown".
+2. title_for_list: Same as project_name. MUST be completely free of emojis and strictly MAXIMUM 4 WORDS long.
 3. summary: 1-2 sentences summarizing what the post is about IN ENGLISH.
 4. action: What should the user DO? (e.g., "Check allocation", "Register testnet", "Claim tokens"). If no action, null.
 5. confidence: Float 0.0-1.0. How confident are you this is a valid airdrop opportunity?
 6. reason: Why did you classify it this way?
 
 IMPORTANT:
-- If the text explicitly announces an "Update" (e.g., "ProjectName Update") regarding rules, limits, or ongoing tasks, categorize as UPDATE.
-- Posts about allocation results, snapshots, launch dates ARE valid (category: CLAIM_CHECK_ELIGIBLE or UPDATE).
+- If the text explicitly announces an "Update" regarding rules, limits, or ongoing tasks, categorize as UPDATE.
+- Posts announcing a Mainnet is live/operational MUST be categorized as MAINNET or UPDATE, NOT CLAIM_CHECK_ELIGIBLE.
+- Posts about allocation results, snapshots, ARE valid (category: CLAIM_CHECK_ELIGIBLE).
 - Posts in Indonesian should be understood the same as English.
 - "Cek alokasi" = "Check allocation" = valid CLAIM_CHECK_ELIGIBLE.
 - "Migrasi" = "Migration" = valid action.
