@@ -5,6 +5,10 @@ import { sendAdminItemPreview, isAdmin } from './telegram';
 
 const TELEGRAM_SOURCE_CHANNELS = (process.env.TELEGRAM_SOURCE_CHANNELS || '').split(',').map(c => c.trim().toLowerCase());
 
+export const getJakartaDate = (date: Date = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(date);
+};
+
 // Rule-based prefilter - lax enough to catch all legit posts
 const isPotentiallyActionable = (text: string): boolean => {
   if (!text) return false;
@@ -77,7 +81,7 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
   }
 
   const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `DM`;
-  const telegramPostDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date(message.date * 1000));
+  const telegramPostDate = getJakartaDate(new Date(message.date * 1000));
 
   // 1. Rule-based prefilter
   if (!isPotentiallyActionable(text)) {
@@ -118,13 +122,20 @@ ${text}`;
   if (error || !data || !data.items || data.items.length === 0) {
     // REGEX FALLBACK: If Gemini fails, try to parse manually
     const u = text.toUpperCase();
-    const urlMatch = text.match(/https?:\/\/[^\s]+/);
+    const hasLink = text.includes('http') || (message.entities && message.entities.some((e: any) => e.type === 'url' || e.type === 'text_link'));
     
-    if (urlMatch) {
+    if (hasLink) {
       console.log(`[FILTER] Gemini failed, using Regex Fallback for msg_id=${messageId}`);
-      const url = urlMatch[0];
+      const urlMatch = text.match(/https?:\/\/[^\s]+/);
+      const url = urlMatch ? urlMatch[0] : sourceLink;
       const lines = text.split('\n').filter(l => l.trim().length > 0);
-      const name = lines[0].substring(0, 30).trim() || 'Project';
+      
+      // Better name extraction: use first line, clean it up
+      let name = lines[0].substring(0, 40).trim()
+        .replace(/#/g, '')
+        .replace(/\*/g, '')
+        .replace(/:/g, '')
+        .trim() || 'New Project';
       
       let cat = 'AIRDROP';
       if (u.includes('WAITLIST') || u.includes('WL ')) cat = 'WL_EARLY_ACCESS';
@@ -142,10 +153,10 @@ ${text}`;
         project_name: name,
         title_for_list: name,
         summary: text.substring(0, 150).replace(/\n/g, ' '),
-        action: `Visit ${url}`,
+        action: `Join/Check at ${url}`,
         confidence: 0.86,
-        status: 'approved', // AUTO-APPROVE if URL found
-        reason: 'Auto-detected via Regex Fallback',
+        status: 'approved',
+        reason: 'Auto-detected via Enhanced Regex Fallback',
         raw_ai_response: rawResponse,
         ai_model: 'regex-fallback',
         raw_update: update,

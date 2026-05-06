@@ -60,14 +60,12 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       const isWeek = command === '/week';
       
       const getJakartaDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(d);
-      
       const now = new Date();
       const endDateStr = getJakartaDate(now);
       
       let startDateStr: string;
       if (isWeek) {
         const d = new Date(now);
-        // We need to calculate 6 days ago in Jakarta time
         d.setDate(d.getDate() - 6);
         startDateStr = getJakartaDate(d);
       } else {
@@ -127,12 +125,12 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       await sendMessage(chatId, msg, { reply_markup: inlineKeyboard });
     }
     else if (command === '/status') {
-      const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabaseAdmin.from('parsed_items').select('status, date_found');
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+      const { data, error } = await supabaseAdmin.from('parsed_items').select('status, telegram_post_date');
       if (error) throw error;
       
       const items = data || [];
-      const todayItems = items.filter(i => i.date_found === today);
+      const todayItems = items.filter(i => i.telegram_post_date === today);
       
       const msg = `📊 <b>System Status</b>\n\n` +
       `<b>Today:</b>\n` +
