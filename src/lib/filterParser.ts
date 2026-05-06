@@ -131,7 +131,11 @@ ${text}`;
       const lines = text.split('\n').filter(l => l.trim().length > 0);
       
       // Better name extraction: use first line, clean it up
-      let name = lines[0].substring(0, 40).trim()
+      let firstLine = lines[0].replace(/https?:\/\/[^\s]+/g, '').trim();
+      if (!firstLine && lines.length > 1) {
+        firstLine = lines[1].replace(/https?:\/\/[^\s]+/g, '').trim();
+      }
+      let name = firstLine.substring(0, 40)
         .replace(/#/g, '')
         .replace(/\*/g, '')
         .replace(/:/g, '')

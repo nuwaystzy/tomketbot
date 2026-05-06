@@ -65,7 +65,10 @@ export async function POST(req: NextRequest) {
 
             // Auto-fix generic name if still warning string
             if (prev.project_name?.includes('Perlu Review')) {
-              const words = text.split(/\s+/).filter((w: string) => !['LINK:', 'HTTPS://', 'JOIN', 'NEW', 'AIRDROP', 'CHECK'].includes(w.toUpperCase()));
+              const words = text.split(/\s+/).filter((w: string) => 
+                !['LINK:', 'HTTPS://', 'JOIN', 'NEW', 'AIRDROP', 'CHECK'].includes(w.toUpperCase()) && 
+                !w.toLowerCase().startsWith('http')
+              );
               const extractedName = words.slice(0, 3).join(' ').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Project';
               updates.project_name = extractedName;
               updates.title_for_list = extractedName;
