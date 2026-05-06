@@ -255,11 +255,11 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
   }
 };
 
-export const sendAdminRecapDraft = async (text: string) => {
+export const sendAdminRecapDraft = async (text: string, start: string, end: string) => {
   const admins = getAdminIds();
   const imageUrl = process.env.RECAP_IMAGE_URL;
   const kb = {
-    inline_keyboard: [[{ text: '🚀 Kirim ke Channel', callback_data: 'send_to_channel' }]]
+    inline_keyboard: [[{ text: '🚀 Kirim ke Channel', callback_data: `send_channel_${start}_${end}` }]]
   };
 
   await Promise.all(admins.map(async (adminId) => {

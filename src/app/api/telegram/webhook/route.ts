@@ -224,18 +224,30 @@ export async function POST(req: NextRequest) {
              await sendMessage(chatId, msg);
           }
         }
-        else if (data === 'send_to_channel') {
+        else if (data.startsWith('send_channel_')) {
+          const parts = data.replace('send_channel_', '').split('_');
+          const start = parts[0];
+          const end = parts[1];
           const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;
           const imageUrl = process.env.RECAP_IMAGE_URL;
-          const text = callbackQuery.message.text || callbackQuery.message.caption || '';
           
           if (!channelId) {
             await sendMessage(chatId, '❌ Gagal: TELEGRAM_RECAP_CHANNEL_ID belum dikonfigurasi.');
             return;
           }
 
-          await sendRecap(channelId, text, imageUrl);
-          await sendMessage(chatId, '✅ <b>Berhasil!</b> Rekap sudah dikirim ke channel.');
+          try {
+            const recapText = await generateRecapDraft(start, end);
+            const res = await sendRecap(channelId, recapText, imageUrl);
+            
+            if (res) {
+              await sendMessage(chatId, `✅ <b>Berhasil!</b> Rekap (Tanggal ${start} - ${end}) sudah dikirim ke channel.`);
+            } else {
+              await sendMessage(chatId, '❌ <b>Gagal!</b> Terjadi kesalahan saat mengirim ke channel. Pastikan bot adalah admin di channel tersebut.');
+            }
+          } catch (e: any) {
+            await sendMessage(chatId, `❌ <b>Gagal!</b> Error: ${e.message}`);
+          }
         }
         else if (data.startsWith('gen_recap_')) {
           // gen_recap_2026-05-01_2026-05-05
@@ -243,7 +255,7 @@ export async function POST(req: NextRequest) {
           const end = parts.pop()!;
           const start = parts.pop()!;
           const recapDraft = await generateRecapDraft(start, end);
-          await sendAdminRecapDraft(recapDraft);
+          await sendAdminRecapDraft(recapDraft, start, end);
         }
       } else {
          await answerCallbackQuery(callbackQueryId, 'Unauthorized');
