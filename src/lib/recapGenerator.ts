@@ -25,7 +25,6 @@ const buildRecapText = (items: DatabaseParsedItem[], dateHeader: string): string
     }
   }
 
-  recapText += `♻️ <a href="https://t.me/tomketairdrop">PREVIOUS LIST</a>\n`;
   recapText += `💭 <a href="https://t.me/+n2dN5qK7RqlhYzk1">DISCUSSION GRUB</a>\n`;
   recapText += `🐦 <a href="https://x.com/TomketLovers">TWITTER</a>\n`;
 
