@@ -14,9 +14,30 @@ const isPotentiallyActionable = (text: string): boolean => {
   if (!text) return false;
   
   const lowerText = text.toLowerCase();
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const firstLine = lines[0] || '';
+  const firstLineWords = firstLine.replace(/https?:\/\/\S+/g, '').trim().split(/\s+/).filter(Boolean);
 
   // Always pass if it contains a URL
   if (text.includes('http') || text.includes('t.me/') || text.includes('.xyz') || text.includes('.io') || text.includes('.com')) {
+    // BUT reject if first line is clearly just a social comment + link
+    // Patterns: very short (≤4 words) non-project phrases before the URL
+    const SOCIAL_COMMENT_PHRASES = [
+      'rame tuh', 'cek aja', 'mantap', 'bagus ini', 'keren ini', 'info dong',
+      'share dong', 'gimana nih', 'wkwk', 'haha', 'lol', 'check this', 'see this',
+      'look at this', 'nice one', 'fyi', 'just sharing', 'share aja',
+    ];
+    if (SOCIAL_COMMENT_PHRASES.some(p => lowerText.startsWith(p) || lowerText.includes('\n' + p))) {
+      return false;
+    }
+    // Reject if ONLY 1-2 casual words before the link with no project-specific keywords
+    if (firstLineWords.length <= 3 && !firstLine.match(/[A-Z][a-z]+[A-Z]|[A-Z]{2,}/)) {
+      // First line has no CamelCase or ALL-CAPS word = likely not a project name
+      const hasProjectKeyword = ['airdrop', 'waitlist', 'testnet', 'claim', 'mainnet',
+        'node', 'wl', 'whitelist', 'mint', 'nft', 'token', 'reward', 'quiz', 'faucet',
+        'update', 'launch', 'register', 'season', 'phase'].some(k => lowerText.includes(k));
+      if (!hasProjectKeyword) return false;
+    }
     return true;
   }
 
@@ -40,8 +61,11 @@ const isPotentiallyActionable = (text: string): boolean => {
   const hasKeyword = actionKeywords.some(kw => lowerText.includes(kw));
   if (hasKeyword) return true;
 
-  // Hard-skip only pure social phrases
-  const hardSkip = ['good morning', 'selamat pagi', 'gm ', '^gm$', '^gn$', 'market crash'];
+  // Hard-skip pure social phrases
+  const hardSkip = [
+    'good morning', 'selamat pagi', 'gm ', 'market crash',
+    'rame tuh', 'mantap bro', 'keren bro', 'info dong', 'share dong'
+  ];
   if (hardSkip.some(phrase => lowerText.includes(phrase))) return false;
 
   // Default: pass if longer than 100 chars (let AI decide)
@@ -159,6 +183,35 @@ ${text}`;
       
       name = cleanProjectName(name);
 
+      // Reject if name is still a social comment phrase (not a project name)
+      const SOCIAL_PHRASES = [
+        'rame tuh', 'cek aja', 'mantap', 'bagus ini', 'keren ini', 'info dong',
+        'share dong', 'check this', 'see this', 'look at this', 'nice one',
+        'just sharing', 'new project'
+      ];
+      const nameLower = name.toLowerCase();
+      if (SOCIAL_PHRASES.some(p => nameLower === p || nameLower.startsWith(p)) || name.split(' ').length <= 1 && name.length < 4) {
+        // Demote to pending for human review
+        itemsToSave.push({
+          source_channel: channelUsername || chatId.toString(),
+          message_id: messageId,
+          source_link: sourceLink,
+          original_text: text,
+          category: 'PENDING_REVIEW',
+          project_name: '⚠️ Perlu Review Manual',
+          title_for_list: '⚠️ Perlu Review Manual',
+          summary: `Nama tidak terdeteksi sebagai project: "${name}". Teks asli: ${text.substring(0, 150)}`,
+          action: null,
+          confidence: 0,
+          status: 'pending',
+          reason: `Regex Fallback: nama '${name}' terlihat seperti komentar sosial, bukan project`,
+          raw_ai_response: rawResponse,
+          ai_model: 'regex-fallback',
+          raw_update: update,
+          telegram_post_date: telegramPostDate
+        });
+        return;
+      }
       let cat = 'AIRDROP';
       const firstLineU = firstLine.toUpperCase();
       
