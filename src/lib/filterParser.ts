@@ -103,10 +103,13 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
   if (!text) {
     console.log(`[FILTER] Dropped: no text`);
     return;
-  }
-
-  const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `DM`;
+  }  const sourceLink = channelUsername ? `https://t.me/${channelUsername}/${messageId}` : `DM`;
   const telegramPostDate = new Date(message.date * 1000).toISOString();
+
+  // CHECK: If original post is older than 30 days, mark as already shared to avoid cluttering weekly recap
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const isOldPost = new Date(message.date * 1000) < thirtyDaysAgo;
 
   // 1. Rule-based prefilter
   if (!isPotentiallyActionable(text)) {
@@ -124,7 +127,9 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
       confidence: 0,
       status: 'skipped',
       reason: 'Prefilter: no keywords or URL',
-      telegram_post_date: telegramPostDate
+      telegram_post_date: telegramPostDate,
+      weekly_shared: true, // Old or prefiltered items shouldn't show in week
+      weekly_batch_id: 'AUTO_SKIP'
     });
     return;
   }
@@ -208,10 +213,13 @@ ${text}`;
           raw_ai_response: rawResponse,
           ai_model: 'regex-fallback',
           raw_update: update,
-          telegram_post_date: telegramPostDate
+          telegram_post_date: telegramPostDate,
+          weekly_shared: isOldPost,
+          weekly_batch_id: isOldPost ? 'OLD_POST' : null
         });
         return;
       }
+
       let cat = 'AIRDROP';
       const firstLineU = firstLine.toUpperCase();
       
@@ -241,7 +249,9 @@ ${text}`;
         raw_ai_response: rawResponse,
         ai_model: 'regex-fallback',
         raw_update: update,
-        telegram_post_date: telegramPostDate
+        telegram_post_date: telegramPostDate,
+        weekly_shared: isOldPost,
+        weekly_batch_id: isOldPost ? 'OLD_POST' : null
       });
     } else {
       // Final fallback to manual review
@@ -262,7 +272,9 @@ ${text}`;
         ai_model: model,
         ai_error: error,
         raw_update: update,
-        telegram_post_date: telegramPostDate
+        telegram_post_date: telegramPostDate,
+        weekly_shared: isOldPost,
+        weekly_batch_id: isOldPost ? 'OLD_POST' : null
       });
     }
   } else {
@@ -289,7 +301,9 @@ ${text}`;
           ai_model: model,
           ai_error: null,
           raw_update: update,
-          telegram_post_date: telegramPostDate
+          telegram_post_date: telegramPostDate,
+          weekly_shared: true, // Skipped items don't go to weekly
+          weekly_batch_id: 'AUTO_SKIP'
         });
         return;
       }
@@ -328,7 +342,9 @@ ${text}`;
         ai_model: model,
         ai_error: null,
         raw_update: update,
-        telegram_post_date: telegramPostDate
+        telegram_post_date: telegramPostDate,
+        weekly_shared: isOldPost,
+        weekly_batch_id: isOldPost ? 'OLD_POST' : null
       });
     });
   }
