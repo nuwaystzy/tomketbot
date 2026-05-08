@@ -40,6 +40,7 @@ EXTRACTION RULES:
 
 IMPORTANT:
 - If the text explicitly announces an "Update" regarding rules, limits, or ongoing tasks, categorize as UPDATE.
+- "Early Access", "Waitlist", "Whitelist", "Registration" (or Indonesian "Akses Awal", "Daftar") MUST be categorized as WL_EARLY_ACCESS.
 - Posts announcing a Mainnet is live/operational MUST be categorized as MAINNET or UPDATE, NOT CLAIM_CHECK_ELIGIBLE.
 - Posts about allocation results, snapshots, ARE valid (category: CLAIM_CHECK_ELIGIBLE).
 - Posts in Indonesian should be understood the same as English.
@@ -47,7 +48,6 @@ IMPORTANT:
 - "Migrasi" = "Migration" = valid action.
 - If a URL is present and the post mentions a project (even if very short like "Jule Waitlist"), it's VALID.
 - Be aggressive in identifying project names from short text.
-- If the text is "ProjectName Waitlist", project_name is "ProjectName" and category is "WL_EARLY_ACCESS".
 - NEVER return project_name as null or "Unknown" if there is any brand or proper noun.
 
 RETURN JSON ONLY. No markdown. No explanation outside JSON.
