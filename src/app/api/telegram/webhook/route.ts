@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseTelegramPost } from '@/lib/filterParser';
 import { handleAdminCommand, logAction, showNextReviewItem } from '@/lib/adminCommands';
-import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft, sendPhoto, sendRecap } from '@/lib/telegram';
+import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft, sendPhoto, sendRecap, sendAdminItemPreview } from '@/lib/telegram';
 import { generateRecapDraft, generateWeeklyUnsharedDraft, generateWeeklyBatchId } from '@/lib/recapGenerator';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
