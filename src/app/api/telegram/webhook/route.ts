@@ -138,8 +138,11 @@ export async function POST(req: NextRequest) {
             if (prev) {
                await logAction(userId, 'move_cat', itemId, { category: prev.category }, { category: cat });
                await supabaseAdmin.from('parsed_items').update({ category: cat }).eq('id', itemId);
+               
+               // After move, show SAME item so they can Approve it
+               const { data: item } = await supabaseAdmin.from('parsed_items').select('*').eq('id', itemId).single();
+               if (item) await sendAdminItemPreview(item as DatabaseParsedItem, chatId, messageId);
             }
-            await showNextReviewItem(chatId, messageId);
           }
         }
         else if (data.startsWith('manage_item_')) {

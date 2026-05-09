@@ -477,9 +477,10 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
         
         await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
         
-        // Return to review
+        // Return to SAME item so they can approve it
         if (session.payload.return_to_review) {
-          await showNextReviewItem(chatId, session.payload.message_id);
+          const { data: item } = await supabaseAdmin.from('parsed_items').select('*').eq('id', itemId).single();
+          if (item) await sendAdminItemPreview(item as DatabaseParsedItem, chatId);
         }
       } 
       else if (session.step === 'date') {
@@ -512,7 +513,8 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
         
         await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
         if (session.payload.return_to_review) {
-          await showNextReviewItem(chatId, session.payload.message_id);
+          const { data: item } = await supabaseAdmin.from('parsed_items').select('*').eq('id', itemId).single();
+          if (item) await sendAdminItemPreview(item as DatabaseParsedItem, chatId);
         }
       }
       else {
