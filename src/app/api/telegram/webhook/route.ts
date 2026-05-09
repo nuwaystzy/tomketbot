@@ -4,6 +4,7 @@ import { handleAdminCommand, logAction, showNextReviewItem } from '@/lib/adminCo
 import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft, sendPhoto, sendRecap, sendAdminItemPreview } from '@/lib/telegram';
 import { generateRecapDraft, generateWeeklyUnsharedDraft, generateWeeklyBatchId } from '@/lib/recapGenerator';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { DatabaseParsedItem } from '@/types';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
              const { editMessageText } = require('@/lib/telegram');
              await editMessageText(chatId, messageId, `Category selected: <b>${cat}</b>\n\nPlease type the Project Name:`, { parse_mode: 'HTML' });
           } else {
-            const prev = await getPrevState(itemId);
+            const { data: prev } = await supabaseAdmin.from('parsed_items').select('category').eq('id', itemId).single();
             if (prev) {
                await logAction(userId, 'move_cat', itemId, { category: prev.category }, { category: cat });
                await supabaseAdmin.from('parsed_items').update({ category: cat }).eq('id', itemId);
