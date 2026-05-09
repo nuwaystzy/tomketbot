@@ -236,14 +236,14 @@ ${text}`;
         summary: text.substring(0, 150).replace(/\n/g, ' '),
         action: `Join/Check at ${url}`,
         confidence: 0.86,
-        status: 'approved',
-        reason: 'Auto-detected via Enhanced Regex Fallback',
+        status: isOldPost ? 'skipped' : 'approved',
+        reason: (isOldPost ? '[OLD POST] ' : '') + 'Auto-detected via Enhanced Regex Fallback',
         raw_ai_response: rawResponse,
         ai_model: 'regex-fallback',
         raw_update: update,
         telegram_post_date: telegramPostDate,
-        weekly_shared: isOldPost,
-        weekly_batch_id: isOldPost ? 'OLD_POST' : null
+        weekly_shared: true, // Old posts shouldn't go to weekly
+        weekly_batch_id: isOldPost ? 'OLD_POST_SKIP' : null
       });
     } else {
       // Final fallback to manual review
@@ -258,21 +258,21 @@ ${text}`;
         summary: `Teks asli: ${text.substring(0, 200)}`,
         action: null,
         confidence: 0,
-        status: 'pending',
-        reason: error ? `AI Error: ${error.substring(0, 200)}` : 'AI tidak memberi respons valid',
+        status: isOldPost ? 'skipped' : 'pending',
+        reason: (isOldPost ? '[OLD POST] ' : '') + (error ? `AI Error: ${error.substring(0, 200)}` : 'AI tidak memberi respons valid'),
         raw_ai_response: rawResponse,
         ai_model: model,
         ai_error: error,
         raw_update: update,
         telegram_post_date: telegramPostDate,
-        weekly_shared: isOldPost,
-        weekly_batch_id: isOldPost ? 'OLD_POST' : null
+        weekly_shared: true,
+        weekly_batch_id: isOldPost ? 'OLD_POST_SKIP' : null
       });
     }
   } else {
     data.items.forEach(item => {
       const forceValid = isUpdateTag;
-      const shouldSkip = !forceValid && (!item.is_valid || item.category === 'SKIP');
+      const shouldSkip = !forceValid && (!item.is_valid || item.category === 'SKIP' || isOldPost);
 
       if (shouldSkip) {
         // Save as skipped (visible in /status → Skipped)
@@ -288,14 +288,14 @@ ${text}`;
           action: item.action,
           confidence: item.confidence,
           status: 'skipped',
-          reason: item.reason || 'AI classified as SKIP',
+          reason: isOldPost ? 'Auto-skip old post (30+ days)' : (item.reason || 'AI classified as SKIP'),
           raw_ai_response: rawResponse,
           ai_model: model,
           ai_error: null,
           raw_update: update,
           telegram_post_date: telegramPostDate,
-          weekly_shared: true, // Skipped items don't go to weekly
-          weekly_batch_id: 'AUTO_SKIP'
+          weekly_shared: true,
+          weekly_batch_id: isOldPost ? 'OLD_POST_SKIP' : 'AUTO_SKIP'
         });
         return;
       }
@@ -335,8 +335,9 @@ ${text}`;
         ai_error: null,
         raw_update: update,
         telegram_post_date: telegramPostDate,
-        weekly_shared: isOldPost,
-        weekly_batch_id: isOldPost ? 'OLD_POST' : null
+        weekly_shared: false,
+        weekly_shared_at: null,
+        weekly_batch_id: null
       });
     });
   }
