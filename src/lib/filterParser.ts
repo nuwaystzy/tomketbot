@@ -242,7 +242,7 @@ ${text}`;
         ai_model: 'regex-fallback',
         raw_update: update,
         telegram_post_date: telegramPostDate,
-        weekly_shared: true, // Old posts shouldn't go to weekly
+        weekly_shared: isOldPost, // Only old posts shouldn't go to weekly
         weekly_batch_id: isOldPost ? 'OLD_POST_SKIP' : null
       });
     } else {
@@ -265,7 +265,7 @@ ${text}`;
         ai_error: error,
         raw_update: update,
         telegram_post_date: telegramPostDate,
-        weekly_shared: true,
+        weekly_shared: isOldPost,
         weekly_batch_id: isOldPost ? 'OLD_POST_SKIP' : null
       });
     }
