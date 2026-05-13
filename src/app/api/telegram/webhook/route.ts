@@ -180,22 +180,42 @@ export async function POST(req: NextRequest) {
           const end = parts[3];
           const { data: items } = await supabaseAdmin
             .from('parsed_items')
-            .select('id, title_for_list')
+            .select('id, title_for_list, display_id, category')
             .eq('status', 'approved')
             .gte('telegram_post_date', `${start}T00:00:00.000Z`)
             .lte('telegram_post_date', `${end}T23:59:59.999Z`);
           
           if (!items || items.length === 0) {
             await answerCallbackQuery(callbackQueryId, `Tidak ada item untuk dihapus`);
-            return;
+            return NextResponse.json({ ok: true });
           }
 
-          const kb = {
-            inline_keyboard: [
-              ...items.map(item => ([{ text: `🗑️ ${item.title_for_list}`, callback_data: `del_item_${item.id}` }])),
-              [{ text: '🔙 Kembali', callback_data: 'cancel_manage' }]
-            ]
-          };
+          const { CATEGORY_KEYS, getCategoryLabel } = require('@/lib/categories');
+          const groupedItems: Record<string, any[]> = {};
+          items.forEach((item: any) => {
+             const cat = item.category || 'UNCATEGORIZED';
+             if (!groupedItems[cat]) groupedItems[cat] = [];
+             groupedItems[cat].push(item);
+          });
+
+          const inline_keyboard: any[] = [];
+          const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as any))];
+          
+          for (const catKey of allKeys) {
+             if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
+                inline_keyboard.push([{ text: `▬▬ ${getCategoryLabel(catKey)} ▬▬`, callback_data: 'noop' }]);
+                groupedItems[catKey].forEach((item: any) => {
+                   inline_keyboard.push([{
+                      text: `🗑️ [${item.display_id || '?'}] ${item.title_for_list}`,
+                      callback_data: `del_item_${item.id}`
+                   }]);
+                });
+             }
+          }
+          
+          inline_keyboard.push([{ text: '🔙 Kembali', callback_data: 'cancel_manage' }]);
+
+          const kb = { inline_keyboard };
           await sendMessage(chatId, `<b>Mode Hapus</b>\nKlik pada project yang ingin dihapus dari daftar:`, { parse_mode: 'HTML', reply_markup: kb });
         }
         else if (data.startsWith('del_item_')) {
@@ -329,7 +349,7 @@ export async function POST(req: NextRequest) {
           // Show list of unsent items as delete buttons
           const { data: items } = await supabaseAdmin
             .from('parsed_items')
-            .select('id, title_for_list, display_id')
+            .select('id, title_for_list, display_id, category')
             .eq('status', 'approved')
             .eq('weekly_shared', false)
             .order('telegram_post_date', { ascending: true });
@@ -339,15 +359,32 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true });
           }
 
-          const kb = {
-            inline_keyboard: [
-              ...items.map((item: any) => ([{
-                text: `🗑️ [${item.display_id}] ${item.title_for_list}`,
-                callback_data: `del_week_item_${item.id}`
-              }])),
-              [{ text: '🔙 Kembali', callback_data: 'cancel_manage' }]
-            ]
-          };
+          const { CATEGORY_KEYS, getCategoryLabel } = require('@/lib/categories');
+          const groupedItems: Record<string, any[]> = {};
+          items.forEach((item: any) => {
+             const cat = item.category || 'UNCATEGORIZED';
+             if (!groupedItems[cat]) groupedItems[cat] = [];
+             groupedItems[cat].push(item);
+          });
+
+          const inline_keyboard: any[] = [];
+          const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as any))];
+          
+          for (const catKey of allKeys) {
+             if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
+                inline_keyboard.push([{ text: `▬▬ ${getCategoryLabel(catKey)} ▬▬`, callback_data: 'noop' }]);
+                groupedItems[catKey].forEach((item: any) => {
+                   inline_keyboard.push([{
+                      text: `🗑️ [${item.display_id || '?'}] ${item.title_for_list}`,
+                      callback_data: `del_week_item_${item.id}`
+                   }]);
+                });
+             }
+          }
+          
+          inline_keyboard.push([{ text: '🔙 Kembali', callback_data: 'cancel_manage' }]);
+
+          const kb = { inline_keyboard };
           await sendMessage(chatId, '<b>Mode Hapus Weekly</b>\nPilih item yang ingin dikeluarkan dari rekap weekly:\n<i>(Item tidak dihapus dari database)</i>', { parse_mode: 'HTML', reply_markup: kb });
         }
         else if (data.startsWith('del_week_item_')) {
