@@ -155,11 +155,48 @@ ${text}`;
     return clean || 'Unknown';
   };
 
+  // ─── Category correction: safety net after AI classification ───
+  const correctCategory = (aiCategory: string, originalText: string): string => {
+    const upper = originalText.toUpperCase();
+    
+    // Priority 1: WL/EARLY ACCESS keywords OVERRIDE airdrop/campaign
+    const WL_KEYWORDS = [
+      'WHITELIST', 'WAITLIST', 'EARLY ACCESS', 'ALLOWLIST', 'PRE-REGISTER',
+      'PRE REGISTER', 'SIGN UP NOW', 'REGISTRATION', 'AKSES AWAL',
+      'WL IS', 'WL OPEN', 'WL LIVE', 'JOIN WL', 'GET WL',
+    ];
+    const hasWLStandalone = /\bWL\b/i.test(originalText);
+    const hasWLKeyword = WL_KEYWORDS.some(kw => upper.includes(kw)) || hasWLStandalone;
+    
+    if (hasWLKeyword && (aiCategory === 'AIRDROP' || aiCategory === 'AIRDROP/CAMPAIGN' || aiCategory === 'PENDING_REVIEW')) {
+      console.log(`[CATEGORY-FIX] Overriding ${aiCategory} → WL_EARLY_ACCESS (found WL keyword)`);
+      return 'WL_EARLY_ACCESS';
+    }
+    
+    // Priority 2: CLAIM/CHECK ELIGIBLE keywords OVERRIDE airdrop (but NOT mainnet/WL)
+    const CLAIM_KEYWORDS = [
+      'CLAIM', 'KLAIM', 'CHECK ELIGIBLE', 'CEK ELIGIBLE', 'ELIGIBILITY',
+      'ALLOCATION', 'ALOKASI', 'SNAPSHOT', 'VESTING', 'TOKEN DISTRIBUTION',
+      'CLAIM PORTAL', 'CLAIM LIVE', 'CLAIMABLE', 'CHECK YOUR',
+    ];
+    const hasClaimKeyword = CLAIM_KEYWORDS.some(kw => upper.includes(kw));
+    
+    if (hasClaimKeyword && aiCategory !== 'MAINNET' && aiCategory !== 'WL_EARLY_ACCESS' && aiCategory !== 'TESTNET') {
+      const isMainnetContext = upper.includes('MAINNET') && !upper.includes('CLAIM');
+      if (!isMainnetContext && (aiCategory === 'AIRDROP' || aiCategory === 'AIRDROP/CAMPAIGN' || aiCategory === 'PENDING_REVIEW' || aiCategory === 'UPDATE')) {
+        console.log(`[CATEGORY-FIX] Overriding ${aiCategory} → CLAIM_CHECK_ELIGIBLE (found claim keyword)`);
+        return 'CLAIM_CHECK_ELIGIBLE';
+      }
+    }
+    
+    return aiCategory;
+  };
+
   if (error || !data || !data.items || data.items.length === 0) {
     // REGEX FALLBACK: If Gemini fails, try to parse manually
     const u = text.toUpperCase();
     const hasLink = text.includes('http') || (message.entities && message.entities.some((e: any) => e.type === 'url' || e.type === 'text_link'));
-    const isKeywordRich = ['AIRDROP', 'WL ', 'WAITLIST', 'TESTNET', 'CLAIM', 'UPDATE', 'QUIZ', 'FORM'].some(k => u.includes(k));
+    const isKeywordRich = ['AIRDROP', 'WL ', 'WAITLIST', 'WHITELIST', 'TESTNET', 'CLAIM', 'UPDATE', 'QUIZ', 'FORM', 'EARLY ACCESS', 'ELIGIBLE'].some(k => u.includes(k));
     
     if (hasLink || isKeywordRich) {
       console.log(`[FILTER] Gemini failed, using Regex Fallback for msg_id=${messageId}`);
@@ -212,18 +249,25 @@ ${text}`;
         return;
       }
 
+      // Regex category detection with PRIORITY ORDER (same as AI prompt)
       let cat = 'AIRDROP';
-      const firstLineU = firstLine.toUpperCase();
       
-      // If the title explicitly says UPDATE, prioritize it
-      if (firstLineU.includes('UPDATE')) cat = 'UPDATE';
-      else if (u.includes('WAITLIST') || u.includes('WL ') || u.includes('EARLY ACCESS')) cat = 'WL_EARLY_ACCESS';
-      else if (u.includes('CLAIM') || u.includes('CHECK ELIGIBLE')) cat = 'CLAIM_CHECK_ELIGIBLE';
+      // Priority 1: WL/EARLY ACCESS (highest - overrides everything)
+      if (u.includes('WHITELIST') || u.includes('WAITLIST') || /\bWL\b/.test(u) || u.includes('EARLY ACCESS') || u.includes('ALLOWLIST') || u.includes('PRE-REGISTER') || u.includes('REGISTRATION') || u.includes('AKSES AWAL')) {
+        cat = 'WL_EARLY_ACCESS';
+      }
+      // Priority 2: CLAIM/CHECK ELIGIBLE
+      else if (u.includes('CLAIM') || u.includes('KLAIM') || u.includes('CHECK ELIGIBLE') || u.includes('ELIGIBILITY') || u.includes('ALLOCATION') || u.includes('ALOKASI') || u.includes('SNAPSHOT') || u.includes('VESTING')) {
+        cat = 'CLAIM_CHECK_ELIGIBLE';
+      }
+      // Priority 3: Specific infrastructure
       else if (u.includes('MAINNET')) cat = 'MAINNET';
       else if (u.includes('TESTNET') || u.includes('FAUCET')) cat = 'TESTNET';
       else if (u.includes('NODE')) cat = 'NODE';
-      else if (u.includes('UPDATE') || u.includes('INFO') || u.includes('MIGRATION')) cat = 'UPDATE';
-      else if (u.includes('QUIZ') || u.includes('ANSWER') || u.includes('FORM')) cat = 'AIRDROP';
+      // Priority 4: Updates
+      else if (u.includes('UPDATE') || u.includes('INFO') || u.includes('MIGRATION') || u.includes('MIGRASI')) cat = 'UPDATE';
+      // Priority 5: Default airdrop (quiz, form, etc.)
+      else if (u.includes('QUIZ') || u.includes('ANSWER') || u.includes('FORM') || u.includes('AIRDROP') || u.includes('CAMPAIGN')) cat = 'AIRDROP';
 
       itemsToSave.push({
         source_channel: channelUsername || chatId.toString(),
@@ -300,9 +344,9 @@ ${text}`;
         return;
       }
 
-      // Determine final category
-      let finalCategory = item.category;
-      if (forceValid && (item.category === 'SKIP' || !item.category)) {
+      // Determine final category - apply correctCategory safety net
+      let finalCategory = correctCategory(item.category, text);
+      if (forceValid && (finalCategory === 'SKIP' || !finalCategory)) {
         finalCategory = 'UPDATE';
       }
 

@@ -19,10 +19,18 @@ export const getCategoryLabel = (key: string): string => {
 export const resolveCategoryAlias = (input: string): string => {
   const upper = input.toUpperCase().trim();
   
-  if (upper === 'WL' || upper === 'WAITLIST' || upper === 'WHITELIST') return 'WL_EARLY_ACCESS';
-  if (upper === 'CLAIM') return 'CLAIM_CHECK_ELIGIBLE';
+  // WL/EARLY ACCESS aliases
+  if (['WL', 'WAITLIST', 'WHITELIST', 'EARLY ACCESS', 'EARLY_ACCESS', 'ALLOWLIST', 'REGISTRATION', 'PRE-REGISTER'].includes(upper)) return 'WL_EARLY_ACCESS';
+  if (upper.includes('WHITELIST') || upper.includes('WAITLIST') || upper.includes('EARLY ACCESS')) return 'WL_EARLY_ACCESS';
+  
+  // CLAIM/CHECK ELIGIBLE aliases
+  if (['CLAIM', 'ELIGIBLE', 'ALLOCATION', 'SNAPSHOT', 'VESTING', 'CHECK ELIGIBLE', 'CHECK_ELIGIBLE', 'CLAIMABLE'].includes(upper)) return 'CLAIM_CHECK_ELIGIBLE';
+  if (upper.includes('CLAIM') || upper.includes('ELIGIBLE') || upper.includes('ALLOCATION') || upper.includes('VESTING')) return 'CLAIM_CHECK_ELIGIBLE';
+  
+  // Other aliases
   if (upper === 'DEPIN' || upper === 'MINING') return 'MINING_DEPIN';
-  if (upper === 'RETRO') return 'RETROACTIVE';
+  if (upper === 'RETRO' || upper === 'RETROACTIVE') return 'RETROACTIVE';
+  if (upper === 'CAMPAIGN' || upper === 'AIRDROP/CAMPAIGN') return 'AIRDROP';
   
   // Try to find exact or partial match
   for (const key of CATEGORY_KEYS) {
