@@ -9,7 +9,7 @@ import { CATEGORY_KEYS, getCategoryLabel } from '@/lib/categories';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
-async function sendOrEditDeleteWeeklyKeyboard(chatId: number, messageId: number | null, page: number) {
+async function sendOrEditDeleteWeeklyKeyboard(chatId: number, messageId: number | null) {
   const { data: items } = await supabaseAdmin
     .from('parsed_items')
     .select('id, title_for_list, display_id, category')
@@ -26,20 +26,8 @@ async function sendOrEditDeleteWeeklyKeyboard(chatId: number, messageId: number 
     return;
   }
 
-  const pageSize = 15;
-  const totalPages = Math.ceil(items.length / pageSize);
-  
-  // Ensure page is within bounds
-  let activePage = page;
-  if (activePage >= totalPages) {
-    activePage = Math.max(0, totalPages - 1);
-  }
-
-  const startIndex = activePage * pageSize;
-  const pageItems = items.slice(startIndex, startIndex + pageSize);
-
   const groupedItems: Record<string, any[]> = {};
-  pageItems.forEach((item: any) => {
+  items.forEach((item: any) => {
      const cat = item.category || 'UNCATEGORIZED';
      if (!groupedItems[cat]) groupedItems[cat] = [];
      groupedItems[cat].push(item);
@@ -54,28 +42,15 @@ async function sendOrEditDeleteWeeklyKeyboard(chatId: number, messageId: number 
         groupedItems[catKey].forEach((item: any) => {
            inline_keyboard.push([{
               text: `🗑️ [${item.display_id || '?'}] ${item.title_for_list}`,
-              callback_data: `del_wk_it_${activePage}_${item.id}`
+              callback_data: `del_wk_${item.display_id}`
            }]);
         });
      }
   }
-
-  // Navigation row
-  if (totalPages > 1) {
-    const navRow = [];
-    if (activePage > 0) {
-      navRow.push({ text: '⬅️ Prev', callback_data: `del_wk_pg_${activePage - 1}` });
-    }
-    navRow.push({ text: `Page ${activePage + 1}/${totalPages}`, callback_data: 'noop' });
-    if (activePage < totalPages - 1) {
-      navRow.push({ text: 'Next ➡️', callback_data: `del_wk_pg_${activePage + 1}` });
-    }
-    inline_keyboard.push(navRow);
-  }
   
   inline_keyboard.push([{ text: '🔙 Kembali', callback_data: 'cancel_manage' }]);
 
-  const text = `<b>Mode Hapus Weekly (Page ${activePage + 1}/${totalPages})</b>\nPilih item yang ingin dikeluarkan dari rekap weekly:\n<i>(Item tidak dihapus dari database)</i>`;
+  const text = `<b>Mode Hapus Weekly</b>\nPilih item yang ingin dikeluarkan dari rekap weekly:\n<i>(Item tidak dihapus dari database)</i>`;
   
   if (messageId) {
     await editMessageText(chatId, messageId, text, { parse_mode: 'HTML', reply_markup: { inline_keyboard } });
@@ -423,33 +398,34 @@ export async function POST(req: NextRequest) {
           }
         }
         else if (data === 'del_week_mode') {
-          await sendOrEditDeleteWeeklyKeyboard(chatId, null, 0);
+          await sendOrEditDeleteWeeklyKeyboard(chatId, null);
         }
-        else if (data.startsWith('del_wk_pg_')) {
-          const page = parseInt(data.replace('del_wk_pg_', ''));
-          await sendOrEditDeleteWeeklyKeyboard(chatId, messageId, page);
-        }
-        else if (data.startsWith('del_wk_it_')) {
-          const parts = data.replace('del_wk_it_', '').split('_');
-          const page = parseInt(parts[0]);
-          const itemId = parts[1];
-
-          const { data: item } = await supabaseAdmin.from('parsed_items').select('title_for_list, display_id').eq('id', itemId).single();
+        else if (data.startsWith('del_wk_')) {
+          const displayIdStr = data.replace('del_wk_', '');
+          const displayId = parseInt(displayIdStr);
           
-          if (item) {
-            // Actually update DB so it disappears from /week
-            await supabaseAdmin.from('parsed_items')
-              .update({ 
-                weekly_shared: true, 
-                weekly_shared_at: new Date().toISOString(),
-                weekly_batch_id: 'SKIPPED' 
-              })
-              .eq('id', itemId);
+          if (!isNaN(displayId)) {
+            const { data: item } = await supabaseAdmin
+              .from('parsed_items')
+              .select('id, title_for_list, display_id')
+              .eq('display_id', displayId)
+              .single();
 
-            await sendMessage(chatId, `✅ Item <b>${item.title_for_list}</b> (ID: ${item.display_id}) berhasil dikeluarkan dari daftar weekly.\n\nGunakan <code>/week_reset ${item.display_id}</code> jika ingin memasukkannya kembali nanti.`);
-            
-            // Refresh keyboard on the current page
-            await sendOrEditDeleteWeeklyKeyboard(chatId, messageId, page);
+            if (item) {
+              // Actually update DB so it disappears from /week
+              await supabaseAdmin.from('parsed_items')
+                .update({ 
+                  weekly_shared: true, 
+                  weekly_shared_at: new Date().toISOString(),
+                  weekly_batch_id: 'SKIPPED' 
+                })
+                .eq('id', item.id);
+
+              await sendMessage(chatId, `✅ Item <b>${item.title_for_list}</b> (ID: ${item.display_id}) berhasil dikeluarkan dari daftar weekly.\n\nGunakan <code>/week_reset ${item.display_id}</code> jika ingin memasukkannya kembali nanti.`);
+              
+              // Refresh the keyboard list in-place
+              await sendOrEditDeleteWeeklyKeyboard(chatId, messageId);
+            }
           }
         }
         else if (data.startsWith('del_week_item_')) {
