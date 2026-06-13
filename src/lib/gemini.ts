@@ -29,7 +29,7 @@ VALID categories (pick one, follow PRIORITY ORDER below):
 - CLAIM_CHECK_ELIGIBLE: Claim portals, token claims, allocation checkers, eligibility checks, snapshot results, vesting schedules
 - UPDATE: Ongoing task updates, new missions for existing projects, migrations
 - PENDING_REVIEW: uncertain, needs human review
-- SKIP: not relevant (meme, general chat, price talk, no action needed)
+- SKIP: not relevant (meme, general chat, price talk, no action needed, proof of withdrawal, chatter)
 
 ═══════════════════════════════════════════
 CATEGORY PRIORITY (HIGHEST TO LOWEST):
@@ -56,6 +56,16 @@ EXAMPLES OF CORRECT CLASSIFICATION:
 - "New airdrop campaign for ABC" → AIRDROP (no WL/claim keywords)
 - "Mawari Mainnet is live" → MAINNET (NOT CLAIM_CHECK_ELIGIBLE)
 
+═══════════════════════════════════════════
+CRITICAL RULES TO AVOID LEAKING CHATTER / SOCIAL CHAT:
+═══════════════════════════════════════════
+- Strictly classify as "SKIP" (with is_valid: false, confidence: 0.1, project_name: null) if the post is:
+  1. General conversation, questions, banter, or chatting: e.g., "bisa nganu ga?", "yang garap kemarin dan...", "gw izi quiz pake...", "gw isi quiz pake...", "temen gw perlu data".
+  2. Proof of earnings, withdrawal status, or transaction chatter: e.g., "bisa wd ke bank", "zar fee wd 1$", "land jir mayan", "ini land cmn ya", "get 20k".
+  3. General comments or reminders without a specific actionable new project/campaign link: e.g., "ntr malem ada fcfs", "cek yang garap ini", "jangan lupa perpanjang base", "segera yang belum".
+- The project_name must be a real crypto brand, protocol, or project name (e.g., "Zar", "Base", "Travala"). It must NEVER be conversational words, verbs, or phrases like "Cek", "Garap", "Get 20k", "Quiz", "Instan", "WD", "Land", "Nganu", "Temen". If no genuine project name exists, classify as SKIP.
+- Do NOT be aggressive. Be highly conservative and selective. If it looks like a user discussing something rather than sharing a structured project opportunity, SKIP it.
+
 EXTRACTION RULES:
 1. project_name: Extract the EXACT project name from the text. Look for brand names, product names, or proper nouns. Remove ALL emojis. Do NOT write "Unknown".
 2. title_for_list: Same as project_name. MUST be completely free of emojis and strictly MAXIMUM 4 WORDS long.
@@ -71,7 +81,6 @@ IMPORTANT:
 - "Cek alokasi" = "Check allocation" = CLAIM_CHECK_ELIGIBLE.
 - "Migrasi" = "Migration" = UPDATE.
 - If a URL is present and the post mentions a project (even if very short like "Jule Waitlist"), it's VALID.
-- Be aggressive in identifying project names from short text.
 - NEVER return project_name as null or "Unknown" if there is any brand or proper noun.
 
 RETURN JSON ONLY. No markdown. No explanation outside JSON.
