@@ -182,28 +182,30 @@ export const sendPhoto = async (chatId: string | number, photoUrl: string, capti
 
 /**
  * Unified helper to send a recap (image + text).
- * Always sends photo via sendPhoto so the image is 100% displayed.
- * If text is > 950 chars (Telegram caption limit is 1024), splits into 2 messages:
- * Message 1: sendPhoto with photo + chunk 1 caption
- * Message 2: sendMessage with chunk 2 + buttons
+ * Telegram caption limit is 1024 visible characters AFTER HTML tags parsing.
+ * For recaps up to ~35 items (~1000 visible chars), sends as ONE SINGLE photo message.
  */
 export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
   if (imageUrl) {
-    if (text.length <= 950) {
-      // Small text: send 1 photo message with full caption
+    // Strip HTML tags to calculate actual visible caption length for Telegram API
+    const visibleText = text.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ');
+
+    if (visibleText.length <= 1000) {
+      // Single sendPhoto message! Fits in 1 message with photo banner at top
       const res = await sendPhoto(chatId, imageUrl, text, options);
       if (res && res.ok) return res;
-      // Fallback if sendPhoto failed
+      // Fallback to sendMessage if sendPhoto failed
       return await sendMessage(chatId, text, options);
     } else {
-      // Long text: ALWAYS send photo via sendPhoto for Message 1!
+      // Only if visibleText > 1000 chars (extremely long), split across 2 messages
       const lines = text.split('\n');
       let chunk1 = '';
       let chunk2 = '';
       let isChunk1 = true;
 
       for (const line of lines) {
-        if (isChunk1 && (chunk1 + line + '\n').length > 900) {
+        const currentVisible = (chunk1 + line + '\n').replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ');
+        if (isChunk1 && currentVisible.length > 950) {
           isChunk1 = false;
         }
         if (isChunk1) {
@@ -217,9 +219,9 @@ export const sendRecap = async (chatId: string | number, text: string, imageUrl?
       chunk2 = chunk2.trim();
 
       if (!chunk2) {
-        const photoRes = await sendPhoto(chatId, imageUrl, text.substring(0, 950), {});
-        const textRes = await sendMessage(chatId, text.substring(950), options);
-        return textRes || photoRes;
+        const photoRes = await sendPhoto(chatId, imageUrl, text, options);
+        if (photoRes && photoRes.ok) return photoRes;
+        return await sendMessage(chatId, text, options);
       }
 
       // 1. Send PHOTO with Chunk 1 caption
