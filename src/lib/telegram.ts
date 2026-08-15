@@ -187,21 +187,25 @@ export const sendPhoto = async (chatId: string | number, photoUrl: string, capti
  */
 export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
   if (imageUrl) {
-    if (text.length <= 1015) {
+    // Telegram caption limit is 1024 characters AFTER parsing HTML entities.
+    // Calculate the stripped length by removing HTML tags.
+    const strippedLength = text.replace(/<[^>]*>?/gm, '').length;
+
+    if (strippedLength <= 1015) {
       // Single sendPhoto message! Photo banner at top + full recap caption + buttons
       const res = await sendPhoto(chatId, imageUrl, text, options);
       if (res && res.ok) return res;
       // Fallback to sendMessage if sendPhoto failed
       return await sendMessage(chatId, text, options);
     } else {
-      // Only if text strictly exceeds 1015 chars, split into chunk1 (up to 1010 chars for photo) and chunk2
+      // Only if stripped text strictly exceeds 1015 chars, split into chunk1 and chunk2
       const lines = text.split('\n');
       let chunk1 = '';
       let chunk2 = '';
       let isChunk1 = true;
 
       for (const line of lines) {
-        if (isChunk1 && (chunk1 + line + '\n').length > 1010) {
+        if (isChunk1 && (chunk1 + line + '\n').replace(/<[^>]*>?/gm, '').length > 1010) {
           isChunk1 = false;
         }
         if (isChunk1) {
@@ -220,7 +224,7 @@ export const sendRecap = async (chatId: string | number, text: string, imageUrl?
         return await sendMessage(chatId, text, options);
       }
 
-      // 1. Send PHOTO with Chunk 1 caption (up to 1010 chars)
+      // 1. Send PHOTO with Chunk 1 caption
       const photoRes = await sendPhoto(chatId, imageUrl, chunk1, {});
 
       // 2. Send Chunk 2 text with options (Buttons)
@@ -303,7 +307,7 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
 
 export const sendAdminRecapDraft = async (text: string, start: string, end: string) => {
   const admins = getAdminIds();
-  const imageUrl = process.env.RECAP_IMAGE_URL;
+  const imageUrl = process.env.RECAP_IMAGE_URL || 'https://placehold.co/800x400/1e1e2f/ffffff/png?text=Weekly+Recap';
 
   // Detect if this is a weekly status-based recap or a date-based recap
   const isWeeklyMode = start === 'week_unshared';

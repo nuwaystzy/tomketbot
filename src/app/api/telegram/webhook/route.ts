@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
           const start = parts[0];
           const end = parts[1];
           const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;
-          const imageUrl = process.env.RECAP_IMAGE_URL;
+          const imageUrl = process.env.RECAP_IMAGE_URL || 'https://placehold.co/800x400/1e1e2f/ffffff/png?text=Weekly+Recap';
           
           if (!channelId) {
             await sendMessage(chatId, '❌ Gagal: TELEGRAM_RECAP_CHANNEL_ID belum dikonfigurasi.');
@@ -353,7 +353,7 @@ export async function POST(req: NextRequest) {
         }
         else if (data === 'send_week_unshared') {
           const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;
-          const imageUrl  = process.env.RECAP_IMAGE_URL;
+          const imageUrl  = process.env.RECAP_IMAGE_URL || 'https://placehold.co/800x400/1e1e2f/ffffff/png?text=Weekly+Recap';
 
           if (!channelId) {
             await sendMessage(chatId, '❌ Gagal: TELEGRAM_RECAP_CHANNEL_ID belum dikonfigurasi.');
