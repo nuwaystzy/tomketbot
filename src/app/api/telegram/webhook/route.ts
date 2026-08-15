@@ -81,8 +81,9 @@ export async function POST(req: NextRequest) {
     if (update.message && update.message.text) {
       const chatId = update.message.chat.id;
       const userId = update.message.from?.id;
+      const isPrivate = update.message.chat.type === 'private';
       
-      if (userId && isAdmin(userId)) {
+      if (isPrivate && userId && isAdmin(userId)) {
         await handleAdminCommand(chatId, userId, update.message.text);
       }
       return NextResponse.json({ ok: true });
@@ -331,7 +332,10 @@ export async function POST(req: NextRequest) {
           const end = parts.pop()!;
           const start = parts.pop()!;
           const recapDraft = await generateRecapDraft(start, end);
-          await sendAdminRecapDraft(recapDraft, start, end);
+          const draftRes = await sendAdminRecapDraft(recapDraft, start, end);
+          if (!draftRes || draftRes.every(r => !r)) {
+            await sendMessage(chatId, '❌ Gagal mengirim draf rekap. Mohon periksa format item.');
+          }
         }
         // ─── Weekly status-based recap handlers ────────────────────────────
         else if (data === 'gen_week_unshared') {
@@ -342,7 +346,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true });
           }
           // Use sendAdminRecapDraft with a special marker for weekly
-          await sendAdminRecapDraft(result.text, 'week_unshared', 'week_unshared');
+          const draftRes = await sendAdminRecapDraft(result.text, 'week_unshared', 'week_unshared');
+          if (!draftRes || draftRes.every(r => !r)) {
+            await sendMessage(chatId, '❌ Gagal mengirim draf rekap. Mohon periksa format item.');
+          }
         }
         else if (data === 'send_week_unshared') {
           const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;

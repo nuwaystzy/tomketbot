@@ -1,6 +1,7 @@
 import { DatabaseParsedItem } from '@/types';
 import { CATEGORY_KEYS, getCategoryLabel } from './categories';
 import { supabaseAdmin } from './supabaseAdmin';
+import { escapeHtml } from './telegram';
 
 // ─── Helper: build recap text from items ─────────────────────────────────────
 
@@ -19,7 +20,7 @@ const buildRecapText = (items: DatabaseParsedItem[], dateHeader: string): string
     if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
       recapText += `<b>${getCategoryLabel(catKey)}</b>\n`;
       groupedItems[catKey].forEach(item => {
-        recapText += `• <a href="${item.source_link}">${item.title_for_list}</a>\n`;
+        recapText += `• <a href="${item.source_link}">${escapeHtml(item.title_for_list || '')}</a>\n`;
       });
       recapText += '\n';
     }

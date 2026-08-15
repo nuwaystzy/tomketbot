@@ -1,4 +1,5 @@
 import { GeminiResponse } from '@/types';
+import { fetchWithTimeout } from './fetchHelper';
 
 const GEMINI_API_KEYS = (process.env.GEMINI_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
 const GEMINI_MODEL = 'gemini-1.5-flash';
@@ -101,35 +102,48 @@ Format:
   ]
 }`;
 
-export const parseWithGemini = async (text: string, attempt = 1): Promise<{ data: GeminiResponse | null, error: string | null, rawResponse: string | null, model: string }> => {
+export const parseWithGemini = async (
+  text: string,
+  attempt = 1,
+  deadline = Date.now() + 8000
+): Promise<{ data: GeminiResponse | null, error: string | null, rawResponse: string | null, model: string }> => {
+  const remaining = deadline - Date.now();
+  if (remaining <= 500) {
+    return { data: null, error: 'Gemini request timed out (budget exhausted)', rawResponse: null, model: GEMINI_MODEL };
+  }
+
   const apiKey = getNextApiKey();
   const model = GEMINI_MODEL; // e.g., gemini-1.5-pro
 
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text }]
+          }],
+          systemInstruction: {
+            parts: [{ text: SYSTEM_PROMPT }]
+          },
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.2
+          },
+          safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+          ]
+        })
       },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text }]
-        }],
-        systemInstruction: {
-          parts: [{ text: SYSTEM_PROMPT }]
-        },
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.2
-        },
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-        ]
-      })
-    });
+      remaining
+    );
 
     if (!response.ok) {
       const errorData = await response.json();
@@ -147,8 +161,8 @@ export const parseWithGemini = async (text: string, attempt = 1): Promise<{ data
     return { data: parsed, error: null, rawResponse: rawText, model };
   } catch (error: any) {
     console.error(`Gemini attempt ${attempt} failed:`, error.message);
-    if (attempt < GEMINI_API_KEYS.length) {
-      return parseWithGemini(text, attempt + 1);
+    if (attempt < GEMINI_API_KEYS.length && Date.now() < deadline) {
+      return parseWithGemini(text, attempt + 1, deadline);
     }
     return { data: null, error: error.message || 'Unknown Gemini error', rawResponse: null, model };
   }
