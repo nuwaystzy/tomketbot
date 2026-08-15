@@ -181,86 +181,58 @@ export const sendPhoto = async (chatId: string | number, photoUrl: string, capti
 };
 
 /**
- * Unified helper to send a recap (image + text) as a single message.
- * If text is > 1000 chars (Telegram caption limit is 1024 including HTML tags),
- * it uses a hidden link in sendMessage to keep it as one message with image preview.
+ * Unified helper to send a recap (image + text).
+ * Always sends photo via sendPhoto so the image is 100% displayed.
+ * If text is > 950 chars (Telegram caption limit is 1024), splits into 2 messages:
+ * Message 1: sendPhoto with photo + chunk 1 caption
+ * Message 2: sendMessage with chunk 2 + buttons
  */
 export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
   if (imageUrl) {
-    // Telegram caption limit is strictly 1024 characters including HTML tags.
-    if (text.length > 950) {
-      // Use sendMessage with hidden image preview link
-      const unifiedText = `<a href="${imageUrl}">&#8205;</a>${text}`;
-      return await sendMessage(chatId, unifiedText, { 
-        ...options, 
-        link_preview_options: {
-          is_disabled: false,
-          url: imageUrl,
-          show_above_text: true,
-          prefer_large_media: true
-        }
-      });
-    } else {
-      // If it fits comfortably under 950 chars, send as photo with caption
+    if (text.length <= 950) {
+      // Small text: send 1 photo message with full caption
       const res = await sendPhoto(chatId, imageUrl, text, options);
       if (res && res.ok) return res;
-      
-      // Fallback to sendMessage if sendPhoto failed
-      const unifiedText = `<a href="${imageUrl}">&#8205;</a>${text}`;
-      return await sendMessage(chatId, unifiedText, {
-        ...options,
-        link_preview_options: {
-          is_disabled: false,
-          url: imageUrl,
-          show_above_text: true,
-          prefer_large_media: true
+      // Fallback if sendPhoto failed
+      return await sendMessage(chatId, text, options);
+    } else {
+      // Long text: ALWAYS send photo via sendPhoto for Message 1!
+      const lines = text.split('\n');
+      let chunk1 = '';
+      let chunk2 = '';
+      let isChunk1 = true;
+
+      for (const line of lines) {
+        if (isChunk1 && (chunk1 + line + '\n').length > 900) {
+          isChunk1 = false;
         }
-      });
+        if (isChunk1) {
+          chunk1 += line + '\n';
+        } else {
+          chunk2 += line + '\n';
+        }
+      }
+
+      chunk1 = chunk1.trim();
+      chunk2 = chunk2.trim();
+
+      if (!chunk2) {
+        const photoRes = await sendPhoto(chatId, imageUrl, text.substring(0, 950), {});
+        const textRes = await sendMessage(chatId, text.substring(950), options);
+        return textRes || photoRes;
+      }
+
+      // 1. Send PHOTO with Chunk 1 caption
+      const photoRes = await sendPhoto(chatId, imageUrl, chunk1, {});
+
+      // 2. Send Chunk 2 text with options (Buttons)
+      const textRes = await sendMessage(chatId, chunk2, options);
+
+      return textRes || photoRes;
     }
   } else {
     return await sendMessage(chatId, text, options);
   }
-};
-
-/**
- * Send recap in multiple message chunks if total text exceeds 4000 characters.
- */
-export const sendRecapInChunks = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
-  if (text.length <= 3900) {
-    return await sendRecap(chatId, text, imageUrl, options);
-  }
-
-  const lines = text.split('\n');
-  const chunks: string[] = [];
-  let currentChunk = '';
-
-  for (const line of lines) {
-    if ((currentChunk + line + '\n').length > 3800) {
-      chunks.push(currentChunk.trim());
-      currentChunk = line + '\n';
-    } else {
-      currentChunk += line + '\n';
-    }
-  }
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
-  }
-
-  let lastRes = null;
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkText = chunks[i];
-    const isLast = i === chunks.length - 1;
-    const chunkOptions = isLast ? options : {};
-    const isFirst = i === 0;
-
-    if (isFirst && imageUrl) {
-      lastRes = await sendRecap(chatId, chunkText, imageUrl, chunkOptions);
-    } else {
-      lastRes = await sendMessage(chatId, chunkText, chunkOptions);
-    }
-  }
-
-  return lastRes;
 };
 
 export const getCategoryKeyboard = (itemId: string | number) => {
@@ -347,9 +319,9 @@ export const sendAdminRecapDraft = async (text: string, start: string, end: stri
 
   const results = await Promise.all(admins.map(async (adminId) => {
     if (!adminId) return null;
-    const res = await sendRecapInChunks(adminId, text, imageUrl, { reply_markup: kb });
+    const res = await sendRecap(adminId, text, imageUrl, { reply_markup: kb });
     if (!res) {
-      // If sending with photo/preview failed, try fallback plain text sendMessage
+      // If sending with photo failed, try fallback plain text sendMessage
       const fallbackRes = await sendMessage(adminId, text, { reply_markup: kb });
       if (!fallbackRes) {
         await sendMessage(adminId, `❌ <b>Gagal mengirim draf rekap.</b>\nPastikan format teks valid.`);
