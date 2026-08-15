@@ -182,30 +182,26 @@ export const sendPhoto = async (chatId: string | number, photoUrl: string, capti
 
 /**
  * Unified helper to send a recap (image + text).
- * Telegram caption limit is 1024 visible characters AFTER HTML tags parsing.
- * For recaps up to ~35 items (~1000 visible chars), sends as ONE SINGLE photo message.
+ * Telegram photo caption limit is strictly 1024 characters.
+ * For recaps up to ~30-35 items (under 1015 chars), sends as ONE SINGLE photo message (sendPhoto).
  */
 export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
   if (imageUrl) {
-    // Strip HTML tags to calculate actual visible caption length for Telegram API
-    const visibleText = text.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ');
-
-    if (visibleText.length <= 1000) {
-      // Single sendPhoto message! Fits in 1 message with photo banner at top
+    if (text.length <= 1015) {
+      // Single sendPhoto message! Photo banner at top + full recap caption + buttons
       const res = await sendPhoto(chatId, imageUrl, text, options);
       if (res && res.ok) return res;
       // Fallback to sendMessage if sendPhoto failed
       return await sendMessage(chatId, text, options);
     } else {
-      // Only if visibleText > 1000 chars (extremely long), split across 2 messages
+      // Only if text strictly exceeds 1015 chars, split into chunk1 (up to 1010 chars for photo) and chunk2
       const lines = text.split('\n');
       let chunk1 = '';
       let chunk2 = '';
       let isChunk1 = true;
 
       for (const line of lines) {
-        const currentVisible = (chunk1 + line + '\n').replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ');
-        if (isChunk1 && currentVisible.length > 950) {
+        if (isChunk1 && (chunk1 + line + '\n').length > 1010) {
           isChunk1 = false;
         }
         if (isChunk1) {
@@ -224,7 +220,7 @@ export const sendRecap = async (chatId: string | number, text: string, imageUrl?
         return await sendMessage(chatId, text, options);
       }
 
-      // 1. Send PHOTO with Chunk 1 caption
+      // 1. Send PHOTO with Chunk 1 caption (up to 1010 chars)
       const photoRes = await sendPhoto(chatId, imageUrl, chunk1, {});
 
       // 2. Send Chunk 2 text with options (Buttons)
