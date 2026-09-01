@@ -1,5 +1,7 @@
 import { DatabaseParsedItem } from '@/types';
 import { fetchWithTimeout } from './fetchHelper';
+import fs from 'fs';
+import path from 'path';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_ADMIN_IDS = (process.env.TELEGRAM_ADMIN_IDS || '').split(',').map(id => id.trim());
@@ -149,31 +151,121 @@ export const deleteMessage = async (chatId: string | number, messageId: number) 
   }
 };
 
-export const sendPhoto = async (chatId: string | number, photoUrl: string, caption?: string, options: any = {}) => {
+const getLocalPhotoBuffer = (filePath?: string): { buffer: Buffer; filename: string } | null => {
+  const candidatePaths = [
+    filePath,
+    process.env.RECAP_IMAGE_PATH,
+    path.join(process.cwd(), 'public', 'recap.jpg'),
+    path.join(process.cwd(), 'public', '123.jpg'),
+    'C:\\Users\\noways\\Downloads\\123.jpg',
+  ].filter(Boolean) as string[];
+
+  for (const p of candidatePaths) {
+    try {
+      if (typeof p === 'string' && fs.existsSync(p)) {
+        const stats = fs.statSync(p);
+        if (stats.isFile() && stats.size > 0) {
+          return { buffer: fs.readFileSync(p), filename: path.basename(p) };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return null;
+};
+
+export const sendPhoto = async (chatId: string | number, photoInput?: string | Buffer, caption?: string, options: any = {}) => {
   try {
-    const response = await fetchWithTimeout(`${TELEGRAM_API_URL}/sendPhoto`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        photo: photoUrl,
-        caption: caption,
-        parse_mode: 'HTML',
-        ...options,
-      }),
-    }, 5000);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Telegram sendPhoto failed for chat ${chatId}:`, errorText);
-      return null;
+    // 1. If photoInput is a web URL (http:// or https://) AND NOT placehold.co:
+    if (typeof photoInput === 'string' && /^https?:\/\//i.test(photoInput) && !photoInput.includes('placehold.co')) {
+      const response = await fetchWithTimeout(`${TELEGRAM_API_URL}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          photo: photoInput,
+          caption: caption,
+          parse_mode: 'HTML',
+          ...options,
+        }),
+      }, 5000);
+
+      if (response.ok) {
+        const resData = await response.json();
+        if (resData.ok) return resData;
+      }
+      console.warn(`Telegram sendPhoto via URL (${photoInput}) failed, attempting local file upload fallback...`);
     }
-    const resData = await response.json();
-    if (!resData.ok) {
-      console.error(`Telegram sendPhoto API error for chat ${chatId}:`, resData);
-      return null;
+
+    // 2. Try uploading local photo file via FormData
+    let photoBuffer: Buffer | null = null;
+    let filename = 'recap.jpg';
+
+    if (Buffer.isBuffer(photoInput)) {
+      photoBuffer = photoInput;
+    } else if (typeof photoInput === 'string' && !photoInput.startsWith('http')) {
+      const local = getLocalPhotoBuffer(photoInput);
+      if (local) {
+        photoBuffer = local.buffer;
+        filename = local.filename;
+      }
     }
-    return resData;
+
+    if (!photoBuffer) {
+      const local = getLocalPhotoBuffer();
+      if (local) {
+        photoBuffer = local.buffer;
+        filename = local.filename;
+      }
+    }
+
+    if (photoBuffer) {
+      const formData = new FormData();
+      formData.append('chat_id', chatId.toString());
+      formData.append('photo', new Blob([new Uint8Array(photoBuffer)], { type: filename.endsWith('.png') ? 'image/png' : 'image/jpeg' }), filename);
+      if (caption) formData.append('caption', caption || '');
+      formData.append('parse_mode', 'HTML');
+
+      if (options.reply_markup) {
+        formData.append('reply_markup', typeof options.reply_markup === 'string' ? options.reply_markup : JSON.stringify(options.reply_markup));
+      }
+
+      const response = await fetchWithTimeout(`${TELEGRAM_API_URL}/sendPhoto`, {
+        method: 'POST',
+        body: formData,
+      }, 12000);
+
+      if (response.ok) {
+        const resData = await response.json();
+        if (resData.ok) return resData;
+      } else {
+        const errorText = await response.text();
+        console.error(`Telegram sendPhoto FormData failed for chat ${chatId}:`, errorText);
+      }
+    }
+
+    // 3. Last resort fallback if URL was passed but placehold.co or failed
+    if (typeof photoInput === 'string' && photoInput.startsWith('http')) {
+      const response = await fetchWithTimeout(`${TELEGRAM_API_URL}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          photo: photoInput,
+          caption: caption,
+          parse_mode: 'HTML',
+          ...options,
+        }),
+      }, 5000);
+
+      if (response.ok) {
+        const resData = await response.json();
+        if (resData.ok) return resData;
+      }
+    }
+
+    return null;
   } catch (error) {
     console.error('Error sending photo:', error);
     return null;
@@ -186,54 +278,52 @@ export const sendPhoto = async (chatId: string | number, photoUrl: string, capti
  * For recaps up to ~30-35 items (under 1015 chars), sends as ONE SINGLE photo message (sendPhoto).
  */
 export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
-  if (imageUrl) {
-    // Telegram caption limit is 1024 characters AFTER parsing HTML entities.
-    // Calculate the stripped length by removing HTML tags.
-    const strippedLength = text.replace(/<[^>]*>?/gm, '').length;
+  const targetImage = (imageUrl && !imageUrl.includes('placehold.co')) ? imageUrl : (process.env.RECAP_IMAGE_URL || 'public/recap.jpg');
+  
+  // Telegram caption limit is 1024 characters AFTER parsing HTML entities.
+  // Calculate the stripped length by removing HTML tags.
+  const strippedLength = text.replace(/<[^>]*>?/gm, '').length;
 
-    if (strippedLength <= 1015) {
-      // Single sendPhoto message! Photo banner at top + full recap caption + buttons
-      const res = await sendPhoto(chatId, imageUrl, text, options);
-      if (res && res.ok) return res;
-      // Fallback to sendMessage if sendPhoto failed
-      return await sendMessage(chatId, text, options);
-    } else {
-      // Only if stripped text strictly exceeds 1015 chars, split into chunk1 and chunk2
-      const lines = text.split('\n');
-      let chunk1 = '';
-      let chunk2 = '';
-      let isChunk1 = true;
-
-      for (const line of lines) {
-        if (isChunk1 && (chunk1 + line + '\n').replace(/<[^>]*>?/gm, '').length > 1010) {
-          isChunk1 = false;
-        }
-        if (isChunk1) {
-          chunk1 += line + '\n';
-        } else {
-          chunk2 += line + '\n';
-        }
-      }
-
-      chunk1 = chunk1.trim();
-      chunk2 = chunk2.trim();
-
-      if (!chunk2) {
-        const photoRes = await sendPhoto(chatId, imageUrl, text, options);
-        if (photoRes && photoRes.ok) return photoRes;
-        return await sendMessage(chatId, text, options);
-      }
-
-      // 1. Send PHOTO with Chunk 1 caption
-      const photoRes = await sendPhoto(chatId, imageUrl, chunk1, {});
-
-      // 2. Send Chunk 2 text with options (Buttons)
-      const textRes = await sendMessage(chatId, chunk2, options);
-
-      return textRes || photoRes;
-    }
-  } else {
+  if (strippedLength <= 1015) {
+    // Single sendPhoto message! Photo banner at top + full recap caption + buttons
+    const res = await sendPhoto(chatId, targetImage, text, options);
+    if (res && res.ok) return res;
+    // Fallback to sendMessage if sendPhoto failed completely
     return await sendMessage(chatId, text, options);
+  } else {
+    // Only if stripped text strictly exceeds 1015 chars, split into chunk1 and chunk2
+    const lines = text.split('\n');
+    let chunk1 = '';
+    let chunk2 = '';
+    let isChunk1 = true;
+
+    for (const line of lines) {
+      if (isChunk1 && (chunk1 + line + '\n').replace(/<[^>]*>?/gm, '').length > 1010) {
+        isChunk1 = false;
+      }
+      if (isChunk1) {
+        chunk1 += line + '\n';
+      } else {
+        chunk2 += line + '\n';
+      }
+    }
+
+    chunk1 = chunk1.trim();
+    chunk2 = chunk2.trim();
+
+    if (!chunk2) {
+      const photoRes = await sendPhoto(chatId, targetImage, text, options);
+      if (photoRes && photoRes.ok) return photoRes;
+      return await sendMessage(chatId, text, options);
+    }
+
+    // 1. Send PHOTO with Chunk 1 caption
+    const photoRes = await sendPhoto(chatId, targetImage, chunk1, {});
+
+    // 2. Send Chunk 2 text with options (Buttons)
+    const textRes = await sendMessage(chatId, chunk2, options);
+
+    return textRes || photoRes;
   }
 };
 
@@ -307,7 +397,7 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
 
 export const sendAdminRecapDraft = async (text: string, start: string, end: string) => {
   const admins = getAdminIds();
-  const imageUrl = process.env.RECAP_IMAGE_URL || 'https://placehold.co/800x400/1e1e2f/ffffff/png?text=Weekly+Recap';
+  const imageUrl = process.env.RECAP_IMAGE_URL || 'public/recap.jpg';
 
   // Detect if this is a weekly status-based recap or a date-based recap
   const isWeeklyMode = start === 'week_unshared';
