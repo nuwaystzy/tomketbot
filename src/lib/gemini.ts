@@ -2,7 +2,7 @@ import { GeminiResponse } from '@/types';
 import { fetchWithTimeout } from './fetchHelper';
 
 const GEMINI_API_KEYS = (process.env.GEMINI_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
-const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 let currentKeyIndex = 0;
 
@@ -15,89 +15,38 @@ const getNextApiKey = (): string => {
   return key;
 };
 
-const SYSTEM_PROMPT = `You are an AI parser for a crypto airdrop recap Telegram channel.
+const SYSTEM_PROMPT = `You are an AI parser for a crypto airdrop Telegram channel. Extract actionable crypto project info (supports English & Indonesian).
 
-Your job is to extract actionable crypto project info from Telegram posts, including posts in Indonesian.
+VALID CATEGORIES (HIGHEST TO LOWEST PRIORITY):
+1. WL_EARLY_ACCESS: Whitelist, waitlist, WL, early access, register, allowlist, daftar, akses awal. (OVERRIDES airdrop/campaign)
+2. CLAIM_CHECK_ELIGIBLE: Claim, klaim, check eligible, allocation, snapshot, vesting. (NOT for mainnet launch)
+3. TESTNET: Testnet tasks, faucet
+4. MAINNET: Mainnet launch or live
+5. NODE: Running nodes
+6. MINING_DEPIN: Mining, DePIN
+7. RETROACTIVE: Retroactive drops
+8. UPDATE: Task updates, migrations, new missions (#update, #info)
+9. AIRDROP: New airdrop/farm/campaign tasks (DEFAULT if no higher category matches)
+10. SKIP: Chatter, banter, questions, proof of withdrawal, memes, no actionable project
 
-VALID categories (pick one, follow PRIORITY ORDER below):
-- TESTNET: testing network participation, testnet faucet
-- MAINNET: mainnet launch announcements, mainnet operational, node running on mainnet
-- RETROACTIVE: retroactive airdrop for past users
-- AIRDROP: new airdrop, farm, or campaign tasks (ONLY if no higher-priority category matches)
-- NODE: running nodes
-- MINING_DEPIN: mining or DePIN project
-- WL_EARLY_ACCESS: Waitlists, whitelists, registration, early access, allowlists, pre-registration
-- CLAIM_CHECK_ELIGIBLE: Claim portals, token claims, allocation checkers, eligibility checks, snapshot results, vesting schedules
-- UPDATE: Ongoing task updates, new missions for existing projects, migrations
-- PENDING_REVIEW: uncertain, needs human review
-- SKIP: not relevant (meme, general chat, price talk, no action needed, proof of withdrawal, chatter)
+STRICT SKIP RULES (Set is_valid: false, category: "SKIP", project_name: null, confidence: 0.1):
+- General chatting, questions, banter (e.g. "bisa nganu ga?", "yang garap kemarin dapet ga?", "isi quiz", "temen gw").
+- Earnings/withdrawal chatter (e.g. "bisa wd", "fee wd 1$", "land jir mayan", "dapet 20k").
+- Casual comments without a specific actionable crypto project link/campaign.
+- project_name MUST be a real crypto brand/protocol (max 4 words, NO emojis). Never use verbs or conversational words as project_name.
 
-═══════════════════════════════════════════
-CATEGORY PRIORITY (HIGHEST TO LOWEST):
-═══════════════════════════════════════════
-1. WL_EARLY_ACCESS - If ANY of these words appear: "whitelist", "waitlist", "WL", "early access", "allowlist", "register", "registration", "sign up", "daftar", "akses awal", "pre-register" → ALWAYS use WL_EARLY_ACCESS. This OVERRIDES "airdrop" or "campaign" keywords.
-2. CLAIM_CHECK_ELIGIBLE - If ANY of these words appear: "claim", "klaim", "check eligible", "cek eligible", "eligibility", "allocation", "alokasi", "snapshot", "vesting", "claim portal", "claim live", "token distribution" → use CLAIM_CHECK_ELIGIBLE. NOT for mainnet launches.
-3. TESTNET/MAINNET/NODE/MINING_DEPIN - Specific infrastructure categories
-4. RETROACTIVE - For retroactive drops
-5. UPDATE - For updates to existing projects
-6. AIRDROP - DEFAULT category. Only use if NONE of the above match.
-
-═══════════════════════════════════════════
-EXAMPLES OF CORRECT CLASSIFICATION:
-═══════════════════════════════════════════
-- "Boili Whitelist is now open" → WL_EARLY_ACCESS (NOT AIRDROP)
-- "Join MovePay early access" → WL_EARLY_ACCESS (NOT AIRDROP)
-- "Cresera registration is live" → WL_EARLY_ACCESS (NOT AIRDROP)
-- "XYZ Airdrop Waitlist" → WL_EARLY_ACCESS (waitlist overrides airdrop)
-- "ABC Campaign + Whitelist" → WL_EARLY_ACCESS (whitelist overrides campaign)
-- "Claim your KAIO tokens" → CLAIM_CHECK_ELIGIBLE (NOT AIRDROP)
-- "Check your eligibility for XYZ" → CLAIM_CHECK_ELIGIBLE
-- "OFC Vesting is live" → CLAIM_CHECK_ELIGIBLE
-- "Raven Market rewards claim" → CLAIM_CHECK_ELIGIBLE
-- "New airdrop campaign for ABC" → AIRDROP (no WL/claim keywords)
-- "Mawari Mainnet is live" → MAINNET (NOT CLAIM_CHECK_ELIGIBLE)
-
-═══════════════════════════════════════════
-CRITICAL RULES TO AVOID LEAKING CHATTER / SOCIAL CHAT:
-═══════════════════════════════════════════
-- Strictly classify as "SKIP" (with is_valid: false, confidence: 0.1, project_name: null) if the post is:
-  1. General conversation, questions, banter, or chatting: e.g., "bisa nganu ga?", "yang garap kemarin dan...", "gw izi quiz pake...", "gw isi quiz pake...", "temen gw perlu data".
-  2. Proof of earnings, withdrawal status, or transaction chatter: e.g., "bisa wd ke bank", "zar fee wd 1$", "land jir mayan", "ini land cmn ya", "get 20k".
-  3. General comments or reminders without a specific actionable new project/campaign link: e.g., "ntr malem ada fcfs", "cek yang garap ini", "jangan lupa perpanjang base", "segera yang belum".
-- The project_name must be a real crypto brand, protocol, or project name (e.g., "Zar", "Base", "Travala"). It must NEVER be conversational words, verbs, or phrases like "Cek", "Garap", "Get 20k", "Quiz", "Instan", "WD", "Land", "Nganu", "Temen". If no genuine project name exists, classify as SKIP.
-- Do NOT be aggressive. Be highly conservative and selective. If it looks like a user discussing something rather than sharing a structured project opportunity, SKIP it.
-
-EXTRACTION RULES:
-1. project_name: Extract the EXACT project name from the text. Look for brand names, product names, or proper nouns. Remove ALL emojis. Do NOT write "Unknown".
-2. title_for_list: Same as project_name. MUST be completely free of emojis and strictly MAXIMUM 4 WORDS long.
-3. summary: 1-2 sentences summarizing what the post is about IN ENGLISH.
-4. action: What should the user DO? (e.g., "Check allocation", "Register waitlist", "Claim tokens"). If no action, null.
-5. confidence: Float 0.0-1.0. How confident are you this is a valid airdrop opportunity?
-6. reason: Why did you classify it this way?
-
-IMPORTANT:
-- If the text explicitly announces an "Update" regarding rules, limits, or ongoing tasks, categorize as UPDATE.
-- Posts announcing a Mainnet is live/operational MUST be categorized as MAINNET or UPDATE, NOT CLAIM_CHECK_ELIGIBLE.
-- Posts in Indonesian should be understood the same as English.
-- "Cek alokasi" = "Check allocation" = CLAIM_CHECK_ELIGIBLE.
-- "Migrasi" = "Migration" = UPDATE.
-- If a URL is present and the post mentions a project (even if very short like "Jule Waitlist"), it's VALID.
-- NEVER return project_name as null or "Unknown" if there is any brand or proper noun.
-
-RETURN JSON ONLY. No markdown. No explanation outside JSON.
-
-Format:
+OUTPUT JSON FORMAT ONLY:
 {
   "items": [
     {
       "is_valid": true,
-      "category": "CLAIM_CHECK_ELIGIBLE",
-      "project_name": "AntFun",
-      "title_for_list": "AntFun",
-      "summary": "AntFun has announced Phase 1 mapping results. Users can now check their airdrop allocation.",
-      "action": "Check allocation at antfundrop.xyz",
-      "confidence": 0.92,
-      "reason": "Contains allocation check link and airdrop date announcement"
+      "category": "WL_EARLY_ACCESS",
+      "project_name": "BrandName",
+      "title_for_list": "BrandName",
+      "summary": "1-2 sentence English summary",
+      "action": "Action to take",
+      "confidence": 0.95,
+      "reason": "Reason for classification"
     }
   ]
 }`;
