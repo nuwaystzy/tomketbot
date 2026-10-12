@@ -102,18 +102,82 @@ Format:
   ]
 }`;
 
+const parseWithGroq = async (
+  text: string,
+  timeout = 6000
+): Promise<{ data: GeminiResponse | null, error: string | null, rawResponse: string | null, model: string } | null> => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+
+  const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
+
+  try {
+    const response = await fetchWithTimeout(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: text }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.1
+        })
+      },
+      timeout
+    );
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('[GROQ] Request failed:', err);
+      return null;
+    }
+
+    const json = await response.json();
+    const rawText = json.choices?.[0]?.message?.content || '';
+    let cleanJson = rawText.trim();
+    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/```json/g, '');
+    if (cleanJson.endsWith('```')) cleanJson = cleanJson.replace(/```/g, '');
+
+    const parsed = JSON.parse(cleanJson) as GeminiResponse;
+    return { data: parsed, error: null, rawResponse: rawText, model: `groq/${model}` };
+  } catch (error: any) {
+    console.error('[GROQ] Error:', error.message);
+    return null;
+  }
+};
+
 export const parseWithGemini = async (
   text: string,
   attempt = 1,
   deadline = Date.now() + 8000
 ): Promise<{ data: GeminiResponse | null, error: string | null, rawResponse: string | null, model: string }> => {
+  // 1. Try Groq AI first if GROQ_API_KEY is configured
+  if (process.env.GROQ_API_KEY && attempt === 1) {
+    const groqRes = await parseWithGroq(text, Math.min(6000, deadline - Date.now()));
+    if (groqRes && groqRes.data && groqRes.data.items && groqRes.data.items.length > 0) {
+      return groqRes;
+    }
+  }
+
+  // 2. Fallback to Gemini AI
   const remaining = deadline - Date.now();
   if (remaining <= 500) {
-    return { data: null, error: 'Gemini request timed out (budget exhausted)', rawResponse: null, model: GEMINI_MODEL };
+    return { data: null, error: 'AI request timed out (budget exhausted)', rawResponse: null, model: GEMINI_MODEL };
+  }
+
+  if (GEMINI_API_KEYS.length === 0) {
+    return { data: null, error: 'No Gemini API keys configured', rawResponse: null, model: GEMINI_MODEL };
   }
 
   const apiKey = getNextApiKey();
-  const model = GEMINI_MODEL; // e.g., gemini-1.5-pro
+  const model = GEMINI_MODEL; // e.g., gemini-1.5-flash
 
   try {
     const response = await fetchWithTimeout(

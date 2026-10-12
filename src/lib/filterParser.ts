@@ -56,12 +56,13 @@ const isPotentiallyActionable = (text: string): boolean => {
   // Hard-skip pure social phrases
   const hardSkip = [
     'good morning', 'selamat pagi', 'gm ', 'market crash',
-    'rame tuh', 'mantap bro', 'keren bro', 'info dong', 'share dong'
+    'rame tuh', 'mantap bro', 'keren bro', 'info dong', 'share dong',
+    'mabar bang', 'tebak score', 'tebak skor', 'ketawa gaboleh'
   ];
   if (hardSkip.some(phrase => lowerText.includes(phrase))) return false;
 
-  // Default: pass if longer than 100 chars (let AI decide)
-  return text.length > 100;
+  // Without a URL or an action keyword, drop as non-actionable chatter
+  return false;
 };
 
 export const parseTelegramPost = async (update: TelegramUpdate) => {
@@ -145,13 +146,19 @@ ${text}`;
     if (!name) return 'Unknown';
     // Remove emojis and common symbols using a regex that matches extended pictographic characters
     let clean = name.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F\u200D🌟✨🔥🚀⭐👍]/gu, '').trim();
+    // Remove Telegram @mentions
+    clean = clean.replace(/@[a-zA-Z0-9_]+/g, '').trim();
+    // Remove conversational prefixes:
+    clean = clean.replace(/^(gasin nah|gas nah|gaskan|cek bang|cek|garap|bantu hitamkan|nih yang|nih|coba|wok)\s+/i, '').trim();
     // Remove multiple spaces
     clean = clean.replace(/\s+/g, ' ');
     // Limit to max 4 words
-    const words = clean.split(' ');
+    const words = clean.split(' ').filter(Boolean);
     if (words.length > 4) {
       clean = words.slice(0, 4).join(' ');
     }
+    // Fix unclosed opening parenthesis: e.g. "Giwa Eco)"
+    if (clean.includes('(') && !clean.includes(')')) clean += ')';
     return clean || 'Unknown';
   };
 
@@ -193,13 +200,13 @@ ${text}`;
   };
 
   if (error || !data || !data.items || data.items.length === 0) {
-    // REGEX FALLBACK: If Gemini fails, try to parse manually
+    // REGEX FALLBACK: If AI fails, try to parse manually
     const u = text.toUpperCase();
     const hasLink = text.includes('http') || (message.entities && message.entities.some((e: any) => e.type === 'url' || e.type === 'text_link'));
     const isKeywordRich = ['AIRDROP', 'WL ', 'WAITLIST', 'WHITELIST', 'TESTNET', 'CLAIM', 'UPDATE', 'QUIZ', 'FORM', 'EARLY ACCESS', 'ELIGIBLE'].some(k => u.includes(k));
     
     if (hasLink || isKeywordRich) {
-      console.log(`[FILTER] Gemini failed, using Regex Fallback for msg_id=${messageId}`);
+      console.log(`[FILTER] AI failed, using Regex Fallback for msg_id=${messageId}`);
       const urlMatch = text.match(/https?:\/\/[^\s]+/);
       const url = urlMatch ? urlMatch[0] : sourceLink;
       const lines = text.split('\n').filter(l => l.trim().length > 0);
@@ -224,27 +231,27 @@ ${text}`;
         'just sharing', 'new project'
       ];
       const nameLower = name.toLowerCase();
-      if (SOCIAL_PHRASES.some(p => nameLower === p || nameLower.startsWith(p)) || name.split(' ').length <= 1 && name.length < 4) {
-        // Demote to pending for human review
+      if (SOCIAL_PHRASES.some(p => nameLower === p || nameLower.startsWith(p)) || (name.split(' ').length <= 1 && name.length < 4)) {
+        // Auto-skip social chatter without alerting admin
         itemsToSave.push({
           source_channel: channelUsername || chatId.toString(),
           message_id: messageId,
           source_link: sourceLink,
           original_text: text,
-          category: 'PENDING_REVIEW',
-          project_name: '⚠️ Perlu Review Manual',
-          title_for_list: '⚠️ Perlu Review Manual',
-          summary: `Nama tidak terdeteksi sebagai project: "${name}". Teks asli: ${text.substring(0, 150)}`,
+          category: 'SKIP',
+          project_name: 'Chatter',
+          title_for_list: 'Chatter',
+          summary: `Filtered social comment: "${name}". Teks asli: ${text.substring(0, 150)}`,
           action: null,
           confidence: 0,
-          status: 'pending',
-          reason: `Regex Fallback: nama '${name}' terlihat seperti komentar sosial, bukan project`,
+          status: 'skipped',
+          reason: `Regex Fallback: nama '${name}' terlihat seperti komentar sosial, auto-skip`,
           raw_ai_response: rawResponse,
           ai_model: 'regex-fallback',
           raw_update: update,
           telegram_post_date: telegramPostDate,
-          weekly_shared: isOldPost,
-          weekly_batch_id: isOldPost ? 'OLD_POST' : null
+          weekly_shared: true,
+          weekly_batch_id: 'AUTO_SKIP'
         });
         return;
       }
@@ -290,27 +297,27 @@ ${text}`;
         weekly_batch_id: isOldPost ? 'OLD_POST_SKIP' : null
       });
     } else {
-      // Final fallback to manual review
+      // If no link, no keywords, and AI gave no result -> drop as chatter/unactionable
       itemsToSave.push({
         source_channel: channelUsername || chatId.toString(),
         message_id: messageId,
         source_link: sourceLink,
         original_text: text,
-        category: 'PENDING_REVIEW',
-        project_name: '⚠️ Perlu Review Manual',
-        title_for_list: '⚠️ Perlu Review Manual',
-        summary: `Teks asli: ${text.substring(0, 200)}`,
+        category: 'SKIP',
+        project_name: 'Chatter',
+        title_for_list: 'Chatter',
+        summary: `Unrecognized text without links or crypto keywords: ${text.substring(0, 150)}`,
         action: null,
         confidence: 0,
-        status: isOldPost ? 'skipped' : 'pending',
-        reason: (isOldPost ? '[OLD POST] ' : '') + (error ? `AI Error: ${error.substring(0, 200)}` : 'AI tidak memberi respons valid'),
+        status: 'skipped',
+        reason: (isOldPost ? '[OLD POST] ' : '') + (error ? `AI Error: ${error.substring(0, 100)} (No link/keyword)` : 'No valid crypto link or keyword found'),
         raw_ai_response: rawResponse,
         ai_model: model,
         ai_error: error,
         raw_update: update,
         telegram_post_date: telegramPostDate,
-        weekly_shared: isOldPost,
-        weekly_batch_id: isOldPost ? 'OLD_POST_SKIP' : null
+        weekly_shared: true,
+        weekly_batch_id: 'AUTO_SKIP'
       });
     }
   } else {
