@@ -390,7 +390,7 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
 
       const msg = `⚙️ <b>Pengaturan Bot</b>\n\n` +
       `<b>Source Channel:</b> ${process.env.TELEGRAM_SOURCE_CHANNELS}\n` +
-      `<b>Model AI:</b> gemini-1.5-pro\n` +
+      `<b>Model AI:</b> ${process.env.GROQ_MODEL || 'qwen/qwen3.8-27b'} (Groq AI)\n` +
       `<b>Jumlah Admin:</b> ${(process.env.TELEGRAM_ADMIN_IDS || '').split(',').length}\n` +
       `<b>Total Item di DB:</b> ${totalItems || 0}\n\n` +
       `<b>Kebijakan Retensi Data:</b>\n` +

@@ -1,5 +1,5 @@
 import { TelegramUpdate, TelegramMessage, DatabaseParsedItem } from '@/types';
-import { parseWithGemini } from './gemini';
+import { parseWithGroq } from './groq';
 import { supabaseAdmin } from './supabaseAdmin';
 import { sendAdminItemPreview, isAdmin } from './telegram';
 
@@ -130,15 +130,15 @@ export const parseTelegramPost = async (update: TelegramUpdate) => {
   // 2. Force #update tag - mark before AI call
   const isUpdateTag = text.toLowerCase().includes('#update') || text.toLowerCase().includes('#info');
 
-  // 3. Call Gemini AI
+  // 3. Call Groq AI
   const promptInput = `Source Channel: ${channelUsername ? '@' + channelUsername : chatId}
 Message ID: ${messageId}
 Source Link: ${sourceLink}
 Message Text:
 ${text}`;
 
-  console.log(`[FILTER] Calling Gemini for msg_id=${messageId}...`);
-  const { data, error, rawResponse, model } = await parseWithGemini(promptInput);
+  console.log(`[FILTER] Calling Groq AI for msg_id=${messageId}...`);
+  const { data, error, rawResponse, model } = await parseWithGroq(promptInput);
 
   let itemsToSave: DatabaseParsedItem[] = [];
 

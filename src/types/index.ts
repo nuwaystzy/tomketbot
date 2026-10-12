@@ -57,9 +57,12 @@ export interface ParsedItem {
   reason: string;
 }
 
-export interface GeminiResponse {
+export interface AIResponse {
   items: ParsedItem[];
 }
+
+export type GroqResponse = AIResponse;
+export type GeminiResponse = AIResponse;
 
 export interface DatabaseParsedItem {
   id?: string;
