@@ -56,6 +56,28 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       
       await sendMessage(chatId, msg);
     }
+    else if (command === '/acc_all' || command === '/approve_all') {
+      const skipChatter = parts[1]?.toLowerCase() === 'clean';
+      
+      if (skipChatter) {
+        // Skip obvious chatter marked as PENDING_REVIEW
+        await supabaseAdmin
+          .from('parsed_items')
+          .update({ status: 'skipped', weekly_shared: true })
+          .eq('category', 'PENDING_REVIEW')
+          .eq('status', 'pending');
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('parsed_items')
+        .update({ status: 'approved' })
+        .eq('status', 'pending')
+        .select('id, title_for_list');
+
+      if (error) throw error;
+      const count = data?.length || 0;
+      await sendMessage(chatId, `✅ <b>Berhasil meng-approve ${count} item!</b>\n\nSilakan ketik /recap untuk membuat rekap tanggal 1-12 Oktober.`);
+    }
     else if (command === '/testchannel') {
       const channelId = process.env.TELEGRAM_RECAP_CHANNEL_ID;
       if (!channelId) {
@@ -396,7 +418,7 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       await sendMessage(chatId, `✅ Undo successful! Item status reverted.`);
     }
     else {
-      await sendMessage(chatId, 'Unknown command. Gunakan: /review, /today, /week, /week_unsent, /week_history, /week_reset, /recap, /status, /pending, /add, /import, /undo, /settings, /testchannel');
+      await sendMessage(chatId, 'Unknown command. Gunakan: /review, /today, /week, /week_unsent, /week_history, /week_reset, /recap, /status, /pending, /acc_all, /add, /import, /undo, /settings, /testchannel');
     }
   } catch (error: any) {
     console.error('Command Error:', error);

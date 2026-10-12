@@ -273,58 +273,66 @@ export const sendPhoto = async (chatId: string | number, photoInput?: string | B
 };
 
 /**
- * Unified helper to send a recap (image + text).
- * Telegram photo caption limit is strictly 1024 characters.
- * For recaps up to ~30-35 items (under 1015 chars), sends as ONE SINGLE photo message (sendPhoto).
+ * Unified helper to send a recap (image + text) as a single message.
+ * Uses Telegram link_preview_options (show_above_text: true, prefer_large_media: true)
+ * to display a large photo banner at the top while allowing up to 4,096 characters,
+ * preventing long lists from splitting into multiple bubbles.
  */
 export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
-  const targetImage = (imageUrl && !imageUrl.includes('placehold.co')) ? imageUrl : (process.env.RECAP_IMAGE_URL || 'public/recap.jpg');
-  
-  // Telegram caption limit is 1024 characters AFTER parsing HTML entities.
-  // Calculate the stripped length by removing HTML tags.
-  const strippedLength = text.replace(/<[^>]*>?/gm, '').length;
+  const webImageUrl = (imageUrl && /^https?:\/\//i.test(imageUrl) && !imageUrl.includes('placehold.co'))
+    ? imageUrl
+    : (process.env.RECAP_IMAGE_URL && /^https?:\/\//i.test(process.env.RECAP_IMAGE_URL))
+      ? process.env.RECAP_IMAGE_URL
+      : 'https://files.catbox.moe/lvcn57.jpg';
 
-  if (strippedLength <= 1015) {
-    // Single sendPhoto message! Photo banner at top + full recap caption + buttons
-    const res = await sendPhoto(chatId, targetImage, text, options);
+  const unifiedText = `<a href="${webImageUrl}">&#8205;</a>${text}`;
+
+  // If total length fits within Telegram's 4,096 character limit:
+  if (unifiedText.length <= 4000) {
+    const res = await sendMessage(chatId, unifiedText, {
+      ...options,
+      link_preview_options: {
+        is_disabled: false,
+        url: webImageUrl,
+        show_above_text: true,
+        prefer_large_media: true,
+      }
+    });
     if (res && res.ok) return res;
-    // Fallback to sendMessage if sendPhoto failed completely
+
+    // Fallback if link_preview failed: try sendPhoto
+    const photoRes = await sendPhoto(chatId, webImageUrl, text.substring(0, 1000), options);
+    if (photoRes && photoRes.ok) return photoRes;
     return await sendMessage(chatId, text, options);
-  } else {
-    // Only if stripped text strictly exceeds 1015 chars, split into chunk1 and chunk2
-    const lines = text.split('\n');
-    let chunk1 = '';
-    let chunk2 = '';
-    let isChunk1 = true;
-
-    for (const line of lines) {
-      if (isChunk1 && (chunk1 + line + '\n').replace(/<[^>]*>?/gm, '').length > 1010) {
-        isChunk1 = false;
-      }
-      if (isChunk1) {
-        chunk1 += line + '\n';
-      } else {
-        chunk2 += line + '\n';
-      }
-    }
-
-    chunk1 = chunk1.trim();
-    chunk2 = chunk2.trim();
-
-    if (!chunk2) {
-      const photoRes = await sendPhoto(chatId, targetImage, text, options);
-      if (photoRes && photoRes.ok) return photoRes;
-      return await sendMessage(chatId, text, options);
-    }
-
-    // 1. Send PHOTO with Chunk 1 caption
-    const photoRes = await sendPhoto(chatId, targetImage, chunk1, {});
-
-    // 2. Send Chunk 2 text with options (Buttons)
-    const textRes = await sendMessage(chatId, chunk2, options);
-
-    return textRes || photoRes;
   }
+
+  // Only if text strictly exceeds 4,000 characters, split into chunks
+  const lines = text.split('\n');
+  let chunk1 = `<a href="${webImageUrl}">&#8205;</a>`;
+  let chunk2 = '';
+  let isChunk1 = true;
+
+  for (const line of lines) {
+    if (isChunk1 && (chunk1 + line + '\n').length > 3900) {
+      isChunk1 = false;
+    }
+    if (isChunk1) {
+      chunk1 += line + '\n';
+    } else {
+      chunk2 += line + '\n';
+    }
+  }
+
+  const res1 = await sendMessage(chatId, chunk1.trim(), {
+    link_preview_options: {
+      is_disabled: false,
+      url: webImageUrl,
+      show_above_text: true,
+      prefer_large_media: true,
+    }
+  });
+  const res2 = await sendMessage(chatId, chunk2.trim(), options);
+  return res2 || res1;
 };
 
 export const getCategoryKeyboard = (itemId: string | number) => {
