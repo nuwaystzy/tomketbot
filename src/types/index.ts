@@ -79,10 +79,10 @@ export interface DatabaseParsedItem {
   confidence: number | null;
   status: 'pending' | 'approved' | 'skipped' | 'posted';
   reason: string | null;
-  raw_ai_response?: any;
+  raw_ai_response?: unknown;
   ai_model?: string;
   ai_error?: string | null;
-  raw_update?: any;
+  raw_update?: unknown;
   telegram_post_date?: string;
   date_found?: string;
   weekly_shared?: boolean;
@@ -90,20 +90,18 @@ export interface DatabaseParsedItem {
   weekly_batch_id?: string | null;
 }
 
-export interface AdminSession {
-  admin_id: number;
-  flow: string;
-  step: string;
-  payload: any;
-}
+export type AdminSession =
+  | { admin_id: number; flow: 'add'; step: 'category' | 'name' | 'link'; payload: { category?: string; name?: string } }
+  | { admin_id: number; flow: 'edit'; step: 'name' | 'date'; payload: { item_id: string; message_id?: number; return_to_review?: boolean } }
+  | { admin_id: number; flow: 'recap'; step: 'start_date' | 'end_date'; payload: { start?: string } };
 
 export interface ActionLog {
   id?: string;
   admin_id: number;
   action_type: string;
   target_item_id: string;
-  previous_state: any;
-  new_state: any;
+  previous_state: unknown;
+  new_state: unknown;
 }
 
 export interface WeeklyRecap {

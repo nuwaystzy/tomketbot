@@ -1,7 +1,16 @@
 import { DatabaseParsedItem } from '@/types';
 import { fetchWithTimeout } from './fetchHelper';
+import { CATEGORY_KEYS, getCategoryLabel } from './categories';
 import fs from 'fs';
 import path from 'path';
+
+type TelegramOptions = {
+  disable_web_page_preview?: boolean;
+  link_preview_options?: unknown;
+  reply_markup?: unknown;
+  [key: string]: unknown;
+};
+type InlineKeyboard = { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_ADMIN_IDS = (process.env.TELEGRAM_ADMIN_IDS || '').split(',').map(id => id.trim());
@@ -74,7 +83,7 @@ export const fetchTelegramMessageDate = async (sourceLink: string): Promise<Date
   }
 };
 
-export const sendMessage = async (chatId: string | number, text: string, options: any = {}) => {
+export const sendMessage = async (chatId: string | number, text: string, options: TelegramOptions = {}) => {
   try {
     const response = await fetchWithTimeout(`${TELEGRAM_API_URL}/sendMessage`, {
       method: 'POST',
@@ -120,7 +129,7 @@ export const answerCallbackQuery = async (callbackQueryId: string, text?: string
   }
 };
 
-export const editMessageText = async (chatId: string | number, messageId: number, text: string, options: any = {}) => {
+export const editMessageText = async (chatId: string | number, messageId: number, text: string, options: TelegramOptions = {}) => {
   try {
     await fetchWithTimeout(`${TELEGRAM_API_URL}/editMessageText`, {
       method: 'POST',
@@ -168,14 +177,14 @@ const getLocalPhotoBuffer = (filePath?: string): { buffer: Buffer; filename: str
           return { buffer: fs.readFileSync(p), filename: path.basename(p) };
         }
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
   return null;
 };
 
-export const sendPhoto = async (chatId: string | number, photoInput?: string | Buffer, caption?: string, options: any = {}) => {
+export const sendPhoto = async (chatId: string | number, photoInput?: string | Buffer, caption?: string, options: TelegramOptions = {}) => {
   try {
     // 1. If photoInput is a web URL (http:// or https://) AND NOT placehold.co:
     if (typeof photoInput === 'string' && /^https?:\/\//i.test(photoInput) && !photoInput.includes('placehold.co')) {
@@ -278,7 +287,7 @@ export const sendPhoto = async (chatId: string | number, photoInput?: string | B
  * to display a large photo banner at the top while allowing up to 4,096 characters,
  * preventing long lists from splitting into multiple bubbles.
  */
-export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: any = {}) => {
+export const sendRecap = async (chatId: string | number, text: string, imageUrl?: string, options: TelegramOptions = {}) => {
   const webImageUrl = (imageUrl && /^https?:\/\//i.test(imageUrl) && !imageUrl.includes('placehold.co'))
     ? imageUrl
     : (process.env.RECAP_IMAGE_URL && /^https?:\/\//i.test(process.env.RECAP_IMAGE_URL))
@@ -336,9 +345,8 @@ export const sendRecap = async (chatId: string | number, text: string, imageUrl?
 };
 
 export const getCategoryKeyboard = (itemId: string | number) => {
-  const { CATEGORY_KEYS, getCategoryLabel } = require('./categories');
-  const keyboard = [];
-  let row = [];
+  const keyboard: InlineKeyboard['inline_keyboard'] = [];
+  let row: Array<{ text: string; callback_data: string }> = [];
   for (let i = 0; i < CATEGORY_KEYS.length; i++) {
     row.push({ text: getCategoryLabel(CATEGORY_KEYS[i]), callback_data: `move_to_${CATEGORY_KEYS[i]}_${itemId}` });
     if (row.length === 2 || i === CATEGORY_KEYS.length - 1) {
@@ -371,7 +379,7 @@ ${item.status === 'pending' ? '⚠️ <b>Pending Review</b>' : '✅ <b>Approved 
 <i>ID: ${item.display_id || item.id}</i>
 `;
 
-  let inlineKeyboard: any = { inline_keyboard: [] };
+  let inlineKeyboard: InlineKeyboard = { inline_keyboard: [] };
   
   if (item.status === 'pending') {
     inlineKeyboard = {
