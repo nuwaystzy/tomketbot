@@ -15,7 +15,7 @@ const buildRecapText = (items: DatabaseParsedItem[], dateHeader: string): string
   });
 
   // Print all known category keys in order, then any extras
-  const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as any))];
+  const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as (typeof CATEGORY_KEYS)[number]))];
   for (const catKey of allKeys) {
     if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
       recapText += `<b>${getCategoryLabel(catKey)}</b>\n`;

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   // Feature disabled by user request. Recap is now fully manual via bot commands
   return NextResponse.json({ ok: true, skipped: true, message: 'Auto daily recap disabled' });
 }

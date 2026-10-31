@@ -1,5 +1,5 @@
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
+import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
 
 const envFile = fs.readFileSync('.env.local', 'utf8');
 const getVal = (key) => envFile.match(new RegExp(`${key}=(.+)`))[1].trim();
