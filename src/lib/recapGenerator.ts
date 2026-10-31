@@ -6,7 +6,7 @@ import { escapeHtml } from './telegram';
 // ─── Helper: build recap text from items ─────────────────────────────────────
 
 const buildRecapText = (items: DatabaseParsedItem[], dateHeader: string): string => {
-  let recapText = `📢 LIST AIRDROP ${dateHeader}\n\n`;
+  let recapText = `📢 LIST GARAPAN ${dateHeader}\n\n`;
 
   const groupedItems: Record<string, DatabaseParsedItem[]> = {};
   items.forEach(item => {
