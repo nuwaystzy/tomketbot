@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseTelegramPost } from '@/lib/filterParser';
 import { handleAdminCommand, logAction, showNextReviewItem } from '@/lib/adminCommands';
-import { answerCallbackQuery, isAdmin, getCategoryKeyboard, sendMessage, sendAdminRecapDraft, sendPhoto, sendRecap, sendAdminItemPreview, editMessageText } from '@/lib/telegram';
+import { answerCallbackQuery, deleteMessage, editMessageText, getCategoryKeyboard, isAdmin, sendAdminItemPreview, sendAdminRecapDraft, sendMessage, sendRecap } from '@/lib/telegram';
 import { generateRecapDraft, generateWeeklyUnsharedDraft, generateWeeklyBatchId } from '@/lib/recapGenerator';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { DatabaseParsedItem } from '@/types';
+import type { DatabaseParsedItem, TelegramUpdate } from '@/types';
 import { CATEGORY_KEYS, getCategoryLabel } from '@/lib/categories';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+type CategoryKey = (typeof CATEGORY_KEYS)[number];
+type ParsedItemListRow = Pick<DatabaseParsedItem, 'id' | 'title_for_list' | 'display_id' | 'category'>;
+type InlineKeyboard = Array<Array<{ text: string; callback_data: string }>>;
+type ParsedItemApprovalUpdate = Partial<Pick<DatabaseParsedItem, 'status' | 'project_name' | 'title_for_list' | 'category'>>;
 
 async function sendOrEditDeleteWeeklyKeyboard(chatId: number, messageId: number | null) {
   const { data: items } = await supabaseAdmin
@@ -17,7 +21,8 @@ async function sendOrEditDeleteWeeklyKeyboard(chatId: number, messageId: number 
     .eq('weekly_shared', false)
     .order('telegram_post_date', { ascending: true });
 
-  if (!items || items.length === 0) {
+  const weeklyItems = (items ?? []) as ParsedItemListRow[];
+  if (weeklyItems.length === 0) {
     if (messageId) {
       await editMessageText(chatId, messageId, '✅ Tidak ada item weekly yang belum dishare.');
     } else {
@@ -26,20 +31,20 @@ async function sendOrEditDeleteWeeklyKeyboard(chatId: number, messageId: number 
     return;
   }
 
-  const groupedItems: Record<string, any[]> = {};
-  items.forEach((item: any) => {
+  const groupedItems: Record<string, ParsedItemListRow[]> = {};
+  weeklyItems.forEach(item => {
      const cat = item.category || 'UNCATEGORIZED';
      if (!groupedItems[cat]) groupedItems[cat] = [];
      groupedItems[cat].push(item);
   });
 
-  const inline_keyboard: any[] = [];
-  const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as any))];
+  const inline_keyboard: InlineKeyboard = [];
+  const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as CategoryKey))];
   
   for (const catKey of allKeys) {
      if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
         inline_keyboard.push([{ text: `▬▬ ${getCategoryLabel(catKey)} ▬▬`, callback_data: 'noop' }]);
-        groupedItems[catKey].forEach((item: any) => {
+        groupedItems[catKey].forEach(item => {
            inline_keyboard.push([{
               text: `🗑️ [${item.display_id || '?'}] ${item.title_for_list}`,
               callback_data: `del_wk_${item.display_id}`
@@ -69,7 +74,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const update = await req.json();
+    const update = await req.json() as TelegramUpdate;
 
     // 1. Handle Channel Posts
     if (update.channel_post || update.edited_channel_post) {
@@ -102,16 +107,11 @@ export async function POST(req: NextRequest) {
         // INSTANT RESPONSE: Removes loading spinner immediately
         await answerCallbackQuery(callbackQueryId);
         
-        const getPrevState = async (id: string) => {
-           const { data } = await supabaseAdmin.from('parsed_items').select('id, category').eq('id', id).single();
-           return data;
-        };
-
         if (data.startsWith('app_next_')) {
           const itemId = data.replace('app_next_', '');
           const { data: prev } = await supabaseAdmin.from('parsed_items').select('*').eq('id', itemId).single();
           
-          const updates: any = { status: 'approved' };
+          const updates: ParsedItemApprovalUpdate = { status: 'approved' };
           
           if (prev) {
             const text = prev.original_text || '';
@@ -168,7 +168,6 @@ export async function POST(req: NextRequest) {
         }
         else if (data.startsWith('move_cat_')) {
           const itemId = data.replace('move_cat_', '');
-          const { editMessageText } = require('@/lib/telegram');
           await editMessageText(chatId, messageId, `Select new category:`, getCategoryKeyboard(itemId));
         }
         else if (data.startsWith('edit_name_')) {
@@ -185,7 +184,6 @@ export async function POST(req: NextRequest) {
           
           if (itemId === 'wizard') {
              await supabaseAdmin.from('admin_sessions').update({ step: 'name', payload: { category: cat } }).eq('admin_id', userId);
-             const { editMessageText } = require('@/lib/telegram');
              await editMessageText(chatId, messageId, `Category selected: <b>${cat}</b>\n\nPlease type the Project Name:`, { parse_mode: 'HTML' });
           } else {
             const { data: prev } = await supabaseAdmin.from('parsed_items').select('category').eq('id', itemId).single();
@@ -215,9 +213,8 @@ export async function POST(req: NextRequest) {
                 ],
                 [{ text: '🔙 Kembali', callback_data: `cancel_manage` }]
               ]
-            };
-            const { editMessageText } = require('@/lib/telegram');
-            await editMessageText(chatId, messageId, `⚙️ <b>Kelola Item: ${item.title_for_list}</b>\n\nSilakan pilih aksi:`, { parse_mode: 'HTML', reply_markup: kb });
+              };
+              await editMessageText(chatId, messageId, `⚙️ <b>Kelola Item: ${item.title_for_list}</b>\n\nSilakan pilih aksi:`, { parse_mode: 'HTML', reply_markup: kb });
           }
         }
         else if (data.startsWith('edit_date_')) {
@@ -243,21 +240,20 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true });
           }
 
-          const { CATEGORY_KEYS, getCategoryLabel } = require('@/lib/categories');
-          const groupedItems: Record<string, any[]> = {};
-          items.forEach((item: any) => {
+          const groupedItems: Record<string, ParsedItemListRow[]> = {};
+          items.forEach(item => {
              const cat = item.category || 'UNCATEGORIZED';
              if (!groupedItems[cat]) groupedItems[cat] = [];
              groupedItems[cat].push(item);
           });
 
-          const inline_keyboard: any[] = [];
-          const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as any))];
+          const inline_keyboard: InlineKeyboard = [];
+          const allKeys = [...CATEGORY_KEYS, ...Object.keys(groupedItems).filter(k => !CATEGORY_KEYS.includes(k as CategoryKey))];
           
           for (const catKey of allKeys) {
              if (groupedItems[catKey] && groupedItems[catKey].length > 0) {
                 inline_keyboard.push([{ text: `▬▬ ${getCategoryLabel(catKey)} ▬▬`, callback_data: 'noop' }]);
-                groupedItems[catKey].forEach((item: any) => {
+                groupedItems[catKey].forEach(item => {
                    inline_keyboard.push([{
                       text: `🗑️ [${item.display_id || '?'}] ${item.title_for_list}`,
                       callback_data: `del_item_${item.id}`
@@ -279,7 +275,6 @@ export async function POST(req: NextRequest) {
         }
         else if (data === 'cancel_manage') {
           // Just delete the sub-menu message to "go back"
-          const { deleteMessage } = require('@/lib/telegram');
           await deleteMessage(chatId, messageId);
         }
         else if (data.startsWith('cancel_move_')) {
@@ -322,8 +317,8 @@ export async function POST(req: NextRequest) {
             } else {
               await sendMessage(chatId, '❌ <b>Gagal!</b> Terjadi kesalahan saat mengirim ke channel. Pastikan bot adalah admin di channel tersebut.');
             }
-          } catch (e: any) {
-            await sendMessage(chatId, `❌ <b>Gagal!</b> Error: ${e.message}`);
+          } catch (error: unknown) {
+            await sendMessage(chatId, `❌ <b>Gagal!</b> Error: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
         else if (data.startsWith('gen_recap_')) {
@@ -400,8 +395,8 @@ export async function POST(req: NextRequest) {
             } else {
               await sendMessage(chatId, '❌ <b>Gagal!</b> Pesan tidak terkirim ke channel. Status item tidak diubah. Pastikan bot adalah admin di channel.');
             }
-          } catch (e: any) {
-            await sendMessage(chatId, `❌ <b>Gagal!</b> Error: ${e.message}\nStatus item tidak diubah.`);
+          } catch (error: unknown) {
+            await sendMessage(chatId, `❌ <b>Gagal!</b> Error: ${error instanceof Error ? error.message : String(error)}\nStatus item tidak diubah.`);
           }
         }
         else if (data === 'del_week_mode') {
