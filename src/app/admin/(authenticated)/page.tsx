@@ -3,26 +3,447 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { CATEGORY_KEYS, getCategoryLabel } from '@/lib/categories';
 
-type Item = { id: string; display_id?: number; title_for_list?: string; project_name?: string; category?: string; status: string; source_link?: string; telegram_post_date?: string; confidence?: number; original_text?: string };
+type Item = {
+  id: string;
+  display_id?: number;
+  title_for_list?: string;
+  project_name?: string;
+  category?: string;
+  status: string;
+  source_link?: string;
+  telegram_post_date?: string;
+  confidence?: number;
+  original_text?: string;
+};
+
 const statuses = ['all', 'pending', 'approved', 'skipped', 'posted'];
 
 export default function AdminPage() {
-  const [items, setItems] = useState<Item[]>([]), [total, setTotal] = useState(0), [status, setStatus] = useState('all'), [category, setCategory] = useState(''), [q, setQ] = useState(''), [start, setStart] = useState(''), [end, setEnd] = useState(''), [loading, setLoading] = useState(true), [error, setError] = useState(''), [recap, setRecap] = useState(''), [active, setActive] = useState<Item | null>(null), [addOpen, setAddOpen] = useState(false);
+  const [items, setItems] = useState<Item[]>([]);
+  const [total, setTotal] = useState(0);
+  const [status, setStatus] = useState('all');
+  const [category, setCategory] = useState('');
+  const [q, setQ] = useState('');
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [recap, setRecap] = useState('');
+  const [active, setActive] = useState<Item | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
-  const load = useCallback(async () => { setLoading(true); setError(''); const p = new URLSearchParams(); if (status !== 'all') p.set('status', status); if (category) p.set('category', category); if (q) p.set('q', q); if (start) p.set('start', start); if (end) p.set('end', end); const r = await fetch(`/api/admin/items?${p}`); const data = await r.json(); if (!r.ok) setError(data.error || 'Gagal memuat data.'); else { setItems(data.items); setTotal(data.total); } setLoading(false); }, [status, category, q, start, end]);
-  useEffect(() => { const timer = setTimeout(() => { void load(); }, 0); return () => clearTimeout(timer); }, [load]);
-  const action = async (id: string, next: string) => { const r = await fetch(`/api/admin/items/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next }) }); if (!r.ok) setError((await r.json()).error || 'Aksi gagal.'); else { setActive(null); void load(); } };
-  const remove = async (id: string) => { if (!confirm(`Hapus ${active?.title_for_list || 'item'}? Ini tidak bisa dibatalkan.`)) return; const r = await fetch(`/api/admin/items/${id}`, { method: 'DELETE' }); if (!r.ok) setError((await r.json()).error || 'Hapus gagal.'); else { setActive(null); void load(); } };
-  const preview = async () => { setRecap('Memuat preview...'); const r = await fetch(`/api/admin/recap/preview?start=${start}&end=${end}`); const data = await r.json(); setRecap(r.ok ? data.text : data.error || 'Gagal membuat preview.'); };
-  const send = async () => { if (!confirm(`Kirim recap ${start} sampai ${end} ke channel?`)) return; const r = await fetch('/api/admin/recap/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start, end, confirmed: true }) }); const data = await r.json(); alert(r.ok ? 'Recap terkirim ke channel.' : data.error || 'Gagal mengirim.'); };
-  const add = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const f = new FormData(event.currentTarget); const r = await fetch('/api/admin/items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: f.get('title'), category: f.get('category'), sourceLink: f.get('sourceLink'), status: f.get('status') }) }); if (!r.ok) setError((await r.json()).error || 'Tambah gagal.'); else { setAddOpen(false); void load(); } };
-  const preset = () => { const year = new Date().getFullYear(); setStart(`${year}-10-13`); setEnd(`${year}-10-31`); };
-  return <main className="admin-shell"><header className="topbar"><div><p className="eyebrow">TOMKET / ADMIN</p><h1>List garapan</h1></div><div className="top-actions"><span>{total} item</span><button className="button" onClick={() => setAddOpen(true)}>+ Tambah</button><button className="button ghost" onClick={async () => { await fetch('/api/admin/logout', { method: 'POST' }); location.assign('/admin/login'); }}>Keluar</button></div></header>
-  <section className="filters"><label>Dari<input type="date" value={start} onChange={e => setStart(e.target.value)} /></label><label>Sampai<input type="date" value={end} onChange={e => setEnd(e.target.value)} /></label><label>Status<select value={status} onChange={e => setStatus(e.target.value)}>{statuses.map(x => <option key={x}>{x}</option>)}</select></label><label>Kategori<select value={category} onChange={e => setCategory(e.target.value)}><option value="">Semua</option>{CATEGORY_KEYS.map(x => <option key={x} value={x}>{getCategoryLabel(x)}</option>)}</select></label><label className="search">Cari<input placeholder="Project atau judul" value={q} onChange={e => setQ(e.target.value)} /></label><button className="button ghost" onClick={preset}>13–31 Oct</button></section>
-  {error && <p className="form-error">{error}</p>}
-  <section className="workspace"><div className="table-card"><div className="section-title"><h2>Review</h2><span>{loading ? 'Memuat...' : `${items.length} ditampilkan`}</span></div>{!loading && !items.length ? <div className="empty">Tidak ada item sesuai filter ini.</div> : <div className="table-wrap"><table><thead><tr><th>ID</th><th>Garapan</th><th>Kategori</th><th>Status</th><th>Tanggal</th><th /></tr></thead><tbody>{items.map(item => <tr key={item.id}><td>#{item.display_id || '—'}</td><td><button className="title-button" onClick={() => setActive(item)}>{item.title_for_list || item.project_name || 'Tanpa judul'}</button>{item.source_link && <a href={item.source_link} target="_blank" rel="noreferrer">Source</a>}</td><td><span className="tag">{getCategoryLabel(item.category || '')}</span></td><td><span className={`status ${item.status}`}>{item.status}</span></td><td>{item.telegram_post_date ? new Date(item.telegram_post_date).toLocaleDateString('id-ID') : '—'}</td><td><button className="link-button" onClick={() => setActive(item)}>Buka</button></td></tr>)}</tbody></table></div>}</div>
-  <aside className="recap-card"><p className="eyebrow">CUSTOM RECAP</p><h2>Preview sebelum kirim</h2><p>Pilih range di atas. Hanya item approved yang masuk.</p><div className="recap-actions"><button className="button" disabled={!start || !end} onClick={preview}>Preview recap</button><button className="button primary" disabled={!start || !end || !recap} onClick={send}>Kirim ke channel</button></div>{recap && <pre>{recap}</pre>}</aside></section>
-  {active && <div className="modal-backdrop" role="presentation" onMouseDown={() => setActive(null)}><section className="modal" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()}><button className="close" onClick={() => setActive(null)}>×</button><p className="eyebrow">ITEM #{active.display_id || '—'}</p><h2>{active.title_for_list || active.project_name}</h2><p className="tag">{getCategoryLabel(active.category || '')}</p><p className="original">{active.original_text || 'Tidak ada teks asli.'}</p><div className="modal-actions"><button className="button primary" onClick={() => action(active.id, 'approved')}>Approve</button><button className="button" onClick={() => action(active.id, 'skipped')}>Skip</button><button className="button danger" onClick={() => remove(active.id)}>Hapus</button></div></section></div>}
-  {addOpen && <div className="modal-backdrop"><form className="modal" onSubmit={add}><button type="button" className="close" onClick={() => setAddOpen(false)}>×</button><p className="eyebrow">MANUAL ENTRY</p><h2>Tambah garapan</h2><label>Nama project<input name="title" required /></label><label>Kategori<select name="category" defaultValue="AIRDROP">{CATEGORY_KEYS.map(x => <option key={x} value={x}>{getCategoryLabel(x)}</option>)}</select></label><label>Link sumber<input name="sourceLink" type="url" required placeholder="https://..." /></label><label>Status<select name="status"><option value="pending">pending</option><option value="approved">approved</option></select></label><button className="button primary">Simpan item</button></form></div>}
-  </main>;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    const p = new URLSearchParams();
+    if (status !== 'all') p.set('status', status);
+    if (category) p.set('category', category);
+    if (q) p.set('q', q);
+    if (start) p.set('start', start);
+    if (end) p.set('end', end);
+    const r = await fetch(`/api/admin/items?${p}`);
+    const data = await r.json();
+    if (!r.ok) {
+      setError(data.error || 'Gagal memuat data.');
+    } else {
+      setItems(data.items);
+      setTotal(data.total);
+      setSelectedIds(new Set());
+    }
+    setLoading(false);
+  }, [status, category, q, start, end]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [load]);
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === items.length && items.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((i) => i.id)));
+    }
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkAction = async (bulkAction: 'approved' | 'skipped' | 'delete') => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    const label = bulkAction === 'delete' ? 'HAPUS' : bulkAction.toUpperCase();
+    if (!confirm(`Yakin ingin ${label} ${count} item terpilih?`)) return;
+
+    setBulkBusy(true);
+    try {
+      const r = await fetch('/api/admin/items/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds), action: bulkAction }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        alert(data.error || 'Operasi gagal.');
+      } else {
+        void load();
+      }
+    } catch {
+      alert('Terjadi kesalahan jaringan.');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const action = async (id: string, next: string) => {
+    const r = await fetch(`/api/admin/items/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: next }),
+    });
+    if (!r.ok) setError((await r.json()).error || 'Aksi gagal.');
+    else {
+      setActive(null);
+      void load();
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm(`Hapus ${active?.title_for_list || 'item'}? Ini tidak bisa dibatalkan.`)) return;
+    const r = await fetch(`/api/admin/items/${id}`, { method: 'DELETE' });
+    if (!r.ok) setError((await r.json()).error || 'Hapus gagal.');
+    else {
+      setActive(null);
+      void load();
+    }
+  };
+
+  const preview = async () => {
+    setRecap('Memuat preview...');
+    const r = await fetch(`/api/admin/recap/preview?start=${start}&end=${end}`);
+    const data = await r.json();
+    setRecap(r.ok ? data.text : data.error || 'Gagal membuat preview.');
+  };
+
+  const send = async () => {
+    if (!confirm(`Kirim recap ${start} sampai ${end} ke channel?`)) return;
+    const r = await fetch('/api/admin/recap/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ start, end, confirmed: true }),
+    });
+    const data = await r.json();
+    alert(r.ok ? 'Recap terkirim ke channel.' : data.error || 'Gagal mengirim.');
+  };
+
+  const add = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const f = new FormData(event.currentTarget);
+    const r = await fetch('/api/admin/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: f.get('title'),
+        category: f.get('category'),
+        sourceLink: f.get('sourceLink'),
+        status: f.get('status'),
+      }),
+    });
+    if (!r.ok) setError((await r.json()).error || 'Tambah gagal.');
+    else {
+      setAddOpen(false);
+      void load();
+    }
+  };
+
+  const preset = () => {
+    const year = new Date().getFullYear();
+    setStart(`${year}-10-13`);
+    setEnd(`${year}-10-31`);
+  };
+
+  const isAllSelected = items.length > 0 && selectedIds.size === items.length;
+
+  return (
+    <main className="admin-shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">TOMKET / ADMIN</p>
+          <h1>List garapan</h1>
+        </div>
+        <div className="top-actions">
+          <span>{total} item</span>
+          <button className="button" onClick={() => setAddOpen(true)}>
+            + Tambah
+          </button>
+          <button
+            className="button ghost"
+            onClick={async () => {
+              await fetch('/api/admin/logout', { method: 'POST' });
+              location.assign('/admin/login');
+            }}
+          >
+            Keluar
+          </button>
+        </div>
+      </header>
+
+      <section className="filters">
+        <label>
+          Dari
+          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+        </label>
+        <label>
+          Sampai
+          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+        </label>
+        <label>
+          Status
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            {statuses.map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Kategori
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Semua</option>
+            {CATEGORY_KEYS.map((x) => (
+              <option key={x} value={x}>
+                {getCategoryLabel(x)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="search">
+          Cari
+          <input
+            placeholder="Project atau judul"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </label>
+        <button className="button ghost" onClick={preset}>
+          13–31 Oct
+        </button>
+      </section>
+
+      {error && <p className="form-error">{error}</p>}
+
+      {selectedIds.size > 0 && (
+        <div className="bulk-toolbar">
+          <span>
+            <strong>{selectedIds.size}</strong> garapan terpilih
+          </span>
+          <div className="bulk-actions">
+            <button
+              className="button primary"
+              disabled={bulkBusy}
+              onClick={() => handleBulkAction('approved')}
+            >
+              Approve Pilihan
+            </button>
+            <button
+              className="button"
+              disabled={bulkBusy}
+              onClick={() => handleBulkAction('skipped')}
+            >
+              Skip Pilihan
+            </button>
+            <button
+              className="button danger"
+              disabled={bulkBusy}
+              onClick={() => handleBulkAction('delete')}
+            >
+              Hapus Pilihan
+            </button>
+            <button
+              className="button ghost"
+              disabled={bulkBusy}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      <section className="workspace">
+        <div className="table-card">
+          <div className="section-title">
+            <h2>Review</h2>
+            <span>{loading ? 'Memuat...' : `${items.length} ditampilkan`}</span>
+          </div>
+          {!loading && !items.length ? (
+            <div className="empty">Tidak ada item sesuai filter ini.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: '38px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        onChange={toggleSelectAll}
+                        aria-label="Pilih semua baris"
+                      />
+                    </th>
+                    <th>ID</th>
+                    <th>Garapan</th>
+                    <th>Kategori</th>
+                    <th>Status</th>
+                    <th>Tanggal</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const isSelected = selectedIds.has(item.id);
+                    return (
+                      <tr key={item.id} className={isSelected ? 'selected-row' : ''}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectOne(item.id)}
+                            aria-label={`Pilih garapan ${item.title_for_list || item.project_name}`}
+                          />
+                        </td>
+                        <td>#{item.display_id || '—'}</td>
+                        <td>
+                          <button className="title-button" onClick={() => setActive(item)}>
+                            {item.title_for_list || item.project_name || 'Tanpa judul'}
+                          </button>
+                          {item.source_link && (
+                            <a href={item.source_link} target="_blank" rel="noreferrer">
+                              Source
+                            </a>
+                          )}
+                        </td>
+                        <td>
+                          <span className="tag">{getCategoryLabel(item.category || '')}</span>
+                        </td>
+                        <td>
+                          <span className={`status ${item.status}`}>{item.status}</span>
+                        </td>
+                        <td>
+                          {item.telegram_post_date
+                            ? new Date(item.telegram_post_date).toLocaleDateString('id-ID')
+                            : '—'}
+                        </td>
+                        <td>
+                          <button className="link-button" onClick={() => setActive(item)}>
+                            Buka
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <aside className="recap-card">
+          <p className="eyebrow">CUSTOM RECAP</p>
+          <h2>Preview sebelum kirim</h2>
+          <p>Pilih range di atas. Hanya item approved yang masuk.</p>
+          <div className="recap-actions">
+            <button className="button" disabled={!start || !end} onClick={preview}>
+              Preview recap
+            </button>
+            <button
+              className="button primary"
+              disabled={!start || !end || !recap}
+              onClick={send}
+            >
+              Kirim ke channel
+            </button>
+          </div>
+          {recap && <pre>{recap}</pre>}
+        </aside>
+      </section>
+
+      {active && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setActive(null)}>
+          <section
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button className="close" onClick={() => setActive(null)}>
+              ×
+            </button>
+            <p className="eyebrow">ITEM #{active.display_id || '—'}</p>
+            <h2>{active.title_for_list || active.project_name}</h2>
+            <p className="tag">{getCategoryLabel(active.category || '')}</p>
+            <p className="original">{active.original_text || 'Tidak ada teks asli.'}</p>
+            <div className="modal-actions">
+              <button className="button primary" onClick={() => action(active.id, 'approved')}>
+                Approve
+              </button>
+              <button className="button" onClick={() => action(active.id, 'skipped')}>
+                Skip
+              </button>
+              <button className="button danger" onClick={() => remove(active.id)}>
+                Hapus
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {addOpen && (
+        <div className="modal-backdrop">
+          <form className="modal" onSubmit={add}>
+            <button type="button" className="close" onClick={() => setAddOpen(false)}>
+              ×
+            </button>
+            <p className="eyebrow">MANUAL ENTRY</p>
+            <h2>Tambah garapan</h2>
+            <label>
+              Nama project
+              <input name="title" required />
+            </label>
+            <label>
+              Kategori
+              <select name="category" defaultValue="AIRDROP">
+                {CATEGORY_KEYS.map((x) => (
+                  <option key={x} value={x}>
+                    {getCategoryLabel(x)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Link sumber
+              <input name="sourceLink" type="url" required placeholder="https://..." />
+            </label>
+            <label>
+              Status
+              <select name="status">
+                <option value="pending">pending</option>
+                <option value="approved">approved</option>
+              </select>
+            </label>
+            <button className="button primary">Simpan item</button>
+          </form>
+        </div>
+      )}
+    </main>
+  );
 }
