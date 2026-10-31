@@ -1,10 +1,12 @@
 import { supabaseAdmin } from './supabaseAdmin';
-import { sendMessage, sendAdminRecapDraft, sendAdminItemPreview, getCategoryKeyboard, fetchTelegramMessageDate } from './telegram';
-import { generateRecapDraft, generateWeeklyUnsharedDraft } from './recapGenerator';
-import { DatabaseParsedItem } from '@/types';
+import { editMessageText, sendMessage, sendAdminRecapDraft, sendAdminItemPreview, getCategoryKeyboard, fetchTelegramMessageDate } from './telegram';
+import { generateRecapDraft } from './recapGenerator';
+import type { AdminSession, DatabaseParsedItem, WeeklyRecap } from '@/types';
+
+type ActionState = Partial<Pick<DatabaseParsedItem, 'status' | 'category' | 'title_for_list' | 'telegram_post_date' | 'project_name'>>;
 import { resolveCategoryAlias, CATEGORY_KEYS, getCategoryLabel } from './categories';
 
-export const logAction = async (adminId: number, actionType: string, itemId: string, prevState: any, newState: any) => {
+export const logAction = async (adminId: number, actionType: string, itemId: string, prevState: ActionState, newState: ActionState) => {
   await supabaseAdmin.from('action_logs').insert({
     admin_id: adminId,
     action_type: actionType,
@@ -117,18 +119,18 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
         return;
       }
 
-      const grouped: Record<string, any[]> = {};
-      data.forEach((item: any) => {
+      const grouped: Record<string, DatabaseParsedItem[]> = {};
+      (data as DatabaseParsedItem[]).forEach(item => {
         if (!grouped[item.category]) grouped[item.category] = [];
         grouped[item.category].push(item);
       });
 
       let msg = `✅ <b>Item Disetujui (/today):</b>\n\n`;
-      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as any))];
+      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as (typeof CATEGORY_KEYS)[number]))];
       for (const catKey of allCats) {
         if (grouped[catKey] && grouped[catKey].length > 0) {
           msg += `<b>${getCategoryLabel(catKey)}</b>\n`;
-          grouped[catKey].forEach((item: any) => {
+          grouped[catKey].forEach(item => {
             const id = item.display_id || item.id;
             msg += `• ${item.title_for_list} <b>[ID:${id}]</b>\n`;
           });
@@ -161,19 +163,19 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
         return;
       }
 
-      const grouped: Record<string, any[]> = {};
-      data.forEach((item: any) => {
+      const grouped: Record<string, DatabaseParsedItem[]> = {};
+      (data as DatabaseParsedItem[]).forEach(item => {
         if (!grouped[item.category]) grouped[item.category] = [];
         grouped[item.category].push(item);
       });
 
       let msg = `✅ <b>Item Siap Direkap Weekly:</b>\n\n`;
-      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as any))];
+      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as (typeof CATEGORY_KEYS)[number]))];
       for (const catKey of allCats) {
         if (grouped[catKey] && grouped[catKey].length > 0) {
           const label = getCategoryLabel(catKey);
           msg += `<b>${label}</b>\n`;
-          grouped[catKey].forEach((item: any) => {
+          grouped[catKey].forEach(item => {
             const id = item.display_id || item.id;
             msg += `• ${item.title_for_list} <b>[ID:${id}]</b>\n`;
           });
@@ -206,18 +208,18 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
         return;
       }
 
-      const grouped: Record<string, any[]> = {};
-      data.forEach((item: any) => {
+      const grouped: Record<string, DatabaseParsedItem[]> = {};
+      (data as DatabaseParsedItem[]).forEach(item => {
         if (!grouped[item.category]) grouped[item.category] = [];
         grouped[item.category].push(item);
       });
 
       let msg = `📋 <b>Item Belum Dishare ke Weekly:</b>\n\n`;
-      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as any))];
+      const allCats = [...CATEGORY_KEYS, ...Object.keys(grouped).filter(c => !CATEGORY_KEYS.includes(c as (typeof CATEGORY_KEYS)[number]))];
       for (const catKey of allCats) {
         if (grouped[catKey] && grouped[catKey].length > 0) {
           msg += `<b>${getCategoryLabel(catKey)}</b>\n`;
-          grouped[catKey].forEach((item: any) => {
+          grouped[catKey].forEach(item => {
             const id = item.display_id || item.id;
             msg += `• ${item.title_for_list} <b>[ID:${id}]</b>\n`;
           });
@@ -241,8 +243,8 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       }
 
       let msg = '📦 <b>Riwayat Rekap Weekly</b>\n\n';
-      data.forEach((recap: any, i: number) => {
-        const dt = new Date(recap.created_at);
+      (data as WeeklyRecap[]).forEach((recap, i) => {
+        const dt = new Date(recap.created_at || 0);
         const dateStr = dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
         const timeStr = dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
         msg += `${i + 1}. <b>${recap.batch_id}</b>\n`;
@@ -301,9 +303,9 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
       const msg = `📊 <b>System Status</b>\n\n` +
       `<b>Today:</b>\n` +
       `- Detected: ${todayItems.length}\n` +
-      `- Pending: ${todayItems.filter((i: any) => i.status === 'pending').length}\n` +
-      `- Approved: ${todayItems.filter((i: any) => i.status === 'approved').length}\n` +
-      `- Skipped: ${todayItems.filter((i: any) => i.status === 'skipped').length}\n\n` +
+      `- Pending: ${(todayItems as Pick<DatabaseParsedItem, 'status'>[]).filter(i => i.status === 'pending').length}\n` +
+      `- Approved: ${(todayItems as Pick<DatabaseParsedItem, 'status'>[]).filter(i => i.status === 'approved').length}\n` +
+      `- Skipped: ${(todayItems as Pick<DatabaseParsedItem, 'status'>[]).filter(i => i.status === 'skipped').length}\n\n` +
       `<b>All Time:</b>\n` +
       `- Total Pending: ${allPending || 0}\n`;
       
@@ -420,9 +422,9 @@ export const handleAdminCommand = async (chatId: number, userId: number, text: s
     else {
       await sendMessage(chatId, 'Unknown command. Gunakan: /review, /today, /week, /week_unsent, /week_history, /week_reset, /recap, /status, /pending, /acc_all, /add, /import, /undo, /settings, /testchannel');
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Command Error:', error);
-    await sendMessage(chatId, `Error executing command: ${error.message}`);
+    await sendMessage(chatId, `Error executing command: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -438,7 +440,6 @@ export const showNextReviewItem = async (chatId: number, editMessageId?: number)
   if (error || !data) {
     const text = '🎉 All pending items reviewed! No pending items left.';
     if (editMessageId) {
-      const { editMessageText } = require('./telegram');
       await editMessageText(chatId, editMessageId, text);
     } else {
       await sendMessage(chatId, text);
@@ -449,7 +450,7 @@ export const showNextReviewItem = async (chatId: number, editMessageId?: number)
   await sendAdminItemPreview(data as DatabaseParsedItem, chatId, editMessageId);
 };
 
-export const processSessionStep = async (chatId: number, userId: number, text: string, session: any) => {
+export const processSessionStep = async (chatId: number, userId: number, text: string, session: AdminSession) => {
   try {
     if (text.toLowerCase() === '/cancel') {
       await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
@@ -573,6 +574,11 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
           return;
         }
         const startDate = session.payload.start;
+        if (!startDate) {
+          await sendMessage(chatId, '❌ Tanggal awal tidak ditemukan. Silakan mulai ulang dengan /recap.');
+          await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
+          return;
+        }
         await supabaseAdmin.from('admin_sessions').delete().eq('admin_id', userId);
         
         await sendMessage(chatId, `⏳ Menggenerate rekap dari ${startDate} sampai ${endDate}...`);
@@ -584,8 +590,8 @@ export const processSessionStep = async (chatId: number, userId: number, text: s
     } else {
       await sendMessage(chatId, `Please use the buttons above or type /cancel to abort.`);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Session Error:', error);
-    await sendMessage(chatId, `Wizard Error: ${error.message}\nType /cancel to abort.`);
+    await sendMessage(chatId, `Wizard Error: ${error instanceof Error ? error.message : String(error)}\nType /cancel to abort.`);
   }
 };

@@ -14,9 +14,6 @@ const isPotentiallyActionable = (text: string): boolean => {
   if (!text) return false;
   
   const lowerText = text.toLowerCase();
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const firstLine = lines[0] || '';
-  const firstLineWords = firstLine.replace(/https?:\/\/\S+/g, '').trim().split(/\s+/).filter(Boolean);
 
   // Always pass if it contains a URL
   if (text.includes('http') || text.includes('t.me/') || text.includes('.xyz') || text.includes('.io') || text.includes('.com')) {
@@ -140,7 +137,7 @@ ${text}`;
   console.log(`[FILTER] Calling Groq AI for msg_id=${messageId}...`);
   const { data, error, rawResponse, model } = await parseWithGroq(promptInput);
 
-  let itemsToSave: DatabaseParsedItem[] = [];
+  const itemsToSave: DatabaseParsedItem[] = [];
 
   const cleanProjectName = (name: string): string => {
     if (!name) return 'Unknown';
@@ -202,7 +199,7 @@ ${text}`;
   if (error || !data || !data.items || data.items.length === 0) {
     // REGEX FALLBACK: If AI fails, try to parse manually
     const u = text.toUpperCase();
-    const hasLink = text.includes('http') || (message.entities && message.entities.some((e: any) => e.type === 'url' || e.type === 'text_link'));
+    const hasLink = text.includes('http') || (message.entities && message.entities.some(e => e.type === 'url' || e.type === 'text_link'));
     const isKeywordRich = ['AIRDROP', 'WL ', 'WAITLIST', 'WHITELIST', 'TESTNET', 'CLAIM', 'UPDATE', 'QUIZ', 'FORM', 'EARLY ACCESS', 'ELIGIBLE'].some(k => u.includes(k));
     
     if (hasLink || isKeywordRich) {
@@ -281,7 +278,7 @@ ${text}`;
         message_id: messageId,
         source_link: sourceLink,
         original_text: text,
-        category: cat as any,
+        category: cat,
         project_name: name,
         title_for_list: name,
         summary: text.substring(0, 150).replace(/\n/g, ' '),

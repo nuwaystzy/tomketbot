@@ -87,9 +87,10 @@ export const parseWithGroq = async (
 
     const parsed = JSON.parse(cleanJson) as AIResponse;
     return { data: parsed, error: null, rawResponse: rawText, model: `groq/${model}` };
-  } catch (error: any) {
-    console.error('[GROQ] Parse exception:', error.message);
-    return { data: null, error: error.message || 'Unknown Groq error', rawResponse: null, model: `groq/${model}` };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[GROQ] Parse exception:', message);
+    return { data: null, error: message || 'Unknown Groq error', rawResponse: null, model: `groq/${model}` };
   }
 };
 
